@@ -1,0 +1,35 @@
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: cloudworker
+      POSTGRES_PASSWORD: cloudworker
+      POSTGRES_DB: cloudworker
+    ports:
+      - "5432:5432"
+    volumes:
+      - cloudworker-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U cloudworker"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  api:
+    build:
+      context: ./backend
+    env_file:
+      - ./backend/.env.example
+    environment:
+      DATABASE_URL: postgresql+asyncpg://cloudworker:cloudworker@db:5432/cloudworker
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend/app:/srv/app/app
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  cloudworker-db-data:
