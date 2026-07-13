@@ -16,9 +16,10 @@ def test_job_create_request_accepts_known_job_type() -> None:
 
 
 def test_job_create_request_defaults_payload_to_empty_dict() -> None:
-    request = JobCreateRequest(job_type="browser")
-
-    assert request.payload == {}
+    with pytest.raises(ValidationError):
+        # Defaults to {}, which then fails browser's payload.script requirement —
+        # confirms the default-factory and the validator both actually run.
+        JobCreateRequest(job_type="browser")
 
 
 def test_job_create_request_rejects_unknown_job_type() -> None:
@@ -41,12 +42,22 @@ def test_job_create_request_rejects_shell_job_with_non_string_command() -> None:
         JobCreateRequest(job_type="shell", payload={"command": 123})
 
 
-def test_job_create_request_accepts_browser_job_without_command() -> None:
-    # Browser jobs aren't validated the same way shell jobs are (Phase 6 will define
-    # their own payload shape) — an empty payload is fine for now.
-    request = JobCreateRequest(job_type="browser", payload={})
+def test_job_create_request_rejects_browser_job_missing_script() -> None:
+    with pytest.raises(ValidationError):
+        JobCreateRequest(job_type="browser", payload={})
 
-    assert request.payload == {}
+
+def test_job_create_request_rejects_browser_job_with_blank_script() -> None:
+    with pytest.raises(ValidationError):
+        JobCreateRequest(job_type="browser", payload={"script": "   "})
+
+
+def test_job_create_request_accepts_browser_job_with_script() -> None:
+    request = JobCreateRequest(
+        job_type="browser", payload={"script": "page.goto('https://example.com')"}
+    )
+
+    assert request.payload == {"script": "page.goto('https://example.com')"}
 
 
 def test_job_response_from_entity_round_trips_fields() -> None:

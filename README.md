@@ -6,11 +6,12 @@ automatically tears the workers down when the job finishes.
 
 ## Status
 
-**Phase 5 of 8 (Shell Job Execution over SSM)** — see [`docs/architecture.md`](docs/architecture.md)
-for the full roadmap, and `docs/phase-1.md` through `docs/phase-5.md` for what shipped in each
-phase. Phase 3's AWS infra is IaC only (not yet applied to a real account), so Phases 4–5's worker
-provisioning/execution are only proven via `moto`-mocked and hand-mocked tests in this
-environment — see [`docs/phase-5.md`](docs/phase-5.md) for what that does and doesn't prove.
+**Phase 6 of 8 (Playwright Browser Automation + Artifact Service)** — see
+[`docs/architecture.md`](docs/architecture.md) for the full roadmap, and `docs/phase-1.md` through
+`docs/phase-6.md` for what shipped in each phase. Phase 3's AWS infra is IaC only (not yet applied
+to a real account) and Phase 6's worker AMI (`infra/packer/`) hasn't been built, so Phases 4–6's
+worker provisioning/execution are only proven via `moto`-mocked and hand-mocked tests in this
+environment — see [`docs/phase-6.md`](docs/phase-6.md) for what that does and doesn't prove.
 
 ## Quickstart
 
@@ -29,11 +30,12 @@ once (or after pulling new migrations) — it creates the `users`/`api_keys`/`jo
 - Readiness (checks Postgres): `GET /readyz`
 - Prometheus metrics: `GET /metrics`
 - Register: `POST /api/v1/auth/register`
-- Jobs: `POST/GET /api/v1/jobs`, `GET/POST /api/v1/jobs/{id}[/cancel]` (require an API key)
+- Jobs: `POST/GET /api/v1/jobs`, `GET/POST /api/v1/jobs/{id}[/cancel]`, `GET /api/v1/jobs/{id}/artifacts` (require an API key)
 
 To also run the Worker Manager locally: `docker compose up worker` (or it starts with the rest
 of the stack via `docker compose up`). It's inert without `LAUNCH_TEMPLATE_ID`/`WORKER_SUBNET_IDS`
-set to real values from an applied Phase 3 (`backend/.env.example` documents the variables).
+set to real values from an applied Phase 3, and browser jobs additionally need a worker AMI built
+from `infra/packer/` (`backend/.env.example` documents all the variables).
 
 See [`docs/api-examples.md`](docs/api-examples.md) for example `curl` calls.
 
@@ -68,6 +70,7 @@ backend/                       FastAPI application, tests, requirements
 infra/terraform/bootstrap/     One-time remote state backend (S3 bucket + DynamoDB lock table)
 infra/terraform/modules/       networking, iam, storage, compute
 infra/terraform/environments/  Thin per-environment composition of the modules above
+infra/packer/                  Worker AMI build (Playwright + runner harness on top of AL2023)
 docs/                          Architecture notes, phase reports, example API calls
 .github/workflows/             CI: lint, test, terraform validate
 docker-compose.yml             Local dev: Postgres + API
@@ -79,7 +82,7 @@ docker-compose.yml             Local dev: Postgres + API
 2. **Authentication + Job Domain + Queue** *(shipped)* — API key auth, `users`/`jobs` tables, Postgres-backed job queue, CRUD API
 3. **AWS Infrastructure via Terraform** *(shipped, IaC only)* — VPC (private-only, SSM/S3 VPC endpoints), IAM/SSM role, S3 buckets, EC2 launch template
 4. **Worker Manager** *(shipped)* — provisions/terminates EC2 workers, lifecycle state machine, `moto`-tested
-5. **Shell Job Execution over SSM** *(this phase)* — SSM SendCommand dispatch, full output to S3, concurrent job processing, payload validation
-6. Playwright browser-automation jobs + Artifact Service
+5. **Shell Job Execution over SSM** *(shipped)* — SSM SendCommand dispatch, full output to S3, concurrent job processing, payload validation
+6. **Playwright Browser Automation + Artifact Service** *(this phase)* — browser jobs via a shared JobExecutor protocol, one universal AMI (Packer), presigned-URL artifact retrieval
 7. React + TypeScript dashboard
 8. Hardening: metrics dashboards, auto-cleanup guarantees, deploy pipeline, security review, beta packaging

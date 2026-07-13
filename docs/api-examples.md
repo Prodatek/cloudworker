@@ -127,8 +127,59 @@ curl -H "Authorization: Bearer $API_KEY" http://localhost:8000/api/v1/jobs/3fa5c
 ```
 
 `result` holds the exit code plus S3 key references to the full, untruncated stdout/stderr — SSM
-writes those directly to the logs bucket. Fetching the actual log contents from S3 (e.g. via
-presigned URLs, with proper access control) is Phase 6's Artifact Service, not this phase.
+writes those directly to the logs bucket.
+
+## Create a browser job (Playwright)
+
+```bash
+curl -i -X POST http://localhost:8000/api/v1/jobs \
+  -H "Authorization: Bearer $API_KEY" -H "Content-Type: application/json" \
+  -d '{
+    "job_type": "browser",
+    "payload": {
+      "script": "page.goto(\"https://example.com\")\npage.screenshot(path=output_dir / \"home.png\")"
+    }
+  }'
+```
+
+`payload.script` is a Python Playwright script, run by the runner harness baked into the worker
+AMI (`infra/packer/`). It's given `page`/`browser`/`context`/`output_dir` to use directly — video
+is recorded automatically for the whole session; call `page.screenshot(path=output_dir / "...")`
+for explicit screenshots. Everything left in `output_dir` when the script finishes is uploaded to
+the artifacts bucket. Same validation pattern as shell: an empty/missing `payload.script` is
+rejected with `422` before the job is ever queued.
+
+## Fetch a job's artifacts (logs, screenshots, video)
+
+```bash
+curl -H "Authorization: Bearer $API_KEY" http://localhost:8000/api/v1/jobs/3fa5c2e1-.../artifacts
+```
+
+```json
+{
+  "artifacts": [
+    {
+      "key": "jobs/3fa5c2e1-.../cmd-id/i-instance/awsrunShellScript/0.awsrunShellScript/stdout",
+      "kind": "log",
+      "size_bytes": 42,
+      "url": "https://cloudworker-dev-<account-id>-logs.s3.amazonaws.com/...(presigned)...",
+      "expires_in_seconds": 900
+    },
+    {
+      "key": "jobs/3fa5c2e1-.../artifacts/home.png",
+      "kind": "screenshot",
+      "size_bytes": 15234,
+      "url": "https://cloudworker-dev-<account-id>-artifacts.s3.amazonaws.com/...(presigned)...",
+      "expires_in_seconds": 900
+    }
+  ]
+}
+```
+
+Each `url` is a presigned S3 GET URL, valid for `expires_in_seconds` (configurable via
+`ARTIFACT_URL_EXPIRY_SECONDS`, default 900). If the AWS logs/artifacts buckets aren't configured,
+this returns `503`, same pattern as job cancellation's worker-termination path when AWS isn't set
+up.
 
 ## List / cancel a job
 

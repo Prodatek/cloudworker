@@ -10,6 +10,7 @@ from app.core.config import get_settings
 from app.core.logging import configure_logging
 from app.core.middleware import RequestContextMiddleware
 from app.infrastructure.aws.ec2_worker_provisioner import EC2WorkerProvisioner
+from app.infrastructure.aws.s3_artifact_store import S3ArtifactStore
 from app.infrastructure.database import create_engine, create_session_factory
 from app.infrastructure.metrics import PrometheusMiddleware, render_metrics
 
@@ -24,7 +25,7 @@ def create_app() -> FastAPI:
         app.state.db_session_factory = create_session_factory(app.state.db_engine)
 
         # None until Phase 3's Terraform is actually applied and these are configured —
-        # get_worker_manager (api/v1/deps.py) returns 503 rather than crashing the API
+        # get_worker_manager (api/v1/deps.py) returns None rather than crashing the API
         # process when a caller needs it and it's unset.
         app.state.worker_provisioner = None
         if settings.launch_template_id and settings.worker_subnet_id_list:
@@ -32,6 +33,16 @@ def create_app() -> FastAPI:
                 region=settings.aws_region,
                 launch_template_id=settings.launch_template_id,
                 subnet_ids=settings.worker_subnet_id_list,
+            )
+
+        # Same None-until-configured pattern as worker_provisioner above; get_artifact_store
+        # (api/v1/deps.py) returns None when neither bucket is set.
+        app.state.artifact_store = None
+        if settings.logs_bucket_name or settings.artifacts_bucket_name:
+            app.state.artifact_store = S3ArtifactStore(
+                region=settings.aws_region,
+                logs_bucket_name=settings.logs_bucket_name,
+                artifacts_bucket_name=settings.artifacts_bucket_name,
             )
 
         yield

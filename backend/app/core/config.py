@@ -29,10 +29,13 @@ class Settings(BaseSettings):
     ssm_ready_timeout_seconds: float = 120.0
     worker_poll_interval_seconds: float = 5.0
 
-    # Phase 3's storage module `logs` bucket output — where SSM writes full command output.
+    # Phase 3's storage module bucket outputs — logs is where SSM writes full command
+    # output, artifacts is where Phase 6's Playwright runner uploads screenshots/video.
     logs_bucket_name: str = ""
+    artifacts_bucket_name: str = ""
     job_execution_timeout_seconds: float = 900.0
     max_concurrent_jobs: int = 5
+    artifact_url_expiry_seconds: int = 900
 
     @property
     def worker_subnet_id_list(self) -> list[str]:

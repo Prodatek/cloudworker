@@ -12,12 +12,18 @@ class JobCreateRequest(BaseModel):
     payload: dict[str, Any] = Field(default_factory=dict)
 
     @model_validator(mode="after")
-    def _validate_shell_command(self) -> Self:
+    def _validate_payload_for_job_type(self) -> Self:
         if self.job_type == JobType.SHELL:
             command = self.payload.get("command")
             if not isinstance(command, str) or not command.strip():
                 raise ValueError(
                     "payload.command is required and must be a non-empty string for shell jobs"
+                )
+        elif self.job_type == JobType.BROWSER:
+            script = self.payload.get("script")
+            if not isinstance(script, str) or not script.strip():
+                raise ValueError(
+                    "payload.script is required and must be a non-empty string for browser jobs"
                 )
         return self
 

@@ -4,6 +4,7 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 
+from app.domain.artifact_store import ArtifactRef
 from app.domain.entities import Job, JobStatus, JobType, Worker, WorkerStatus
 from app.domain.job_executor import JobExecutionResult
 from app.domain.repositories import RepositoryBundle
@@ -164,13 +165,12 @@ class FakeJobExecutor:
         self._active = 0
         self.max_concurrent_observed = 0
 
-    async def execute(
-        self, job_id: uuid.UUID, command: str, instance_id: str
-    ) -> JobExecutionResult:
+    async def execute(self, job: Job, instance_id: str) -> JobExecutionResult:
         self._active += 1
         self.max_concurrent_observed = max(self.max_concurrent_observed, self._active)
         try:
-            self.executed.append((job_id, command, instance_id))
+            command_or_script = str(job.payload.get("command") or job.payload.get("script") or "")
+            self.executed.append((job.id, command_or_script, instance_id))
             if self.delay_seconds:
                 await asyncio.sleep(self.delay_seconds)
             if self.raise_error:
@@ -182,6 +182,21 @@ class FakeJobExecutor:
             )
         finally:
             self._active -= 1
+
+
+class FakeArtifactStore:
+    """Configurable fake ArtifactStore recording calls for assertions."""
+
+    def __init__(self, artifacts: list[ArtifactRef] | None = None) -> None:
+        self.artifacts = artifacts or []
+        self.presigned_url_calls: list[tuple[str, str, int]] = []
+
+    async def list_job_artifacts(self, job_id: uuid.UUID) -> list[ArtifactRef]:
+        return self.artifacts
+
+    async def generate_presigned_url(self, bucket: str, key: str, expires_in_seconds: int) -> str:
+        self.presigned_url_calls.append((bucket, key, expires_in_seconds))
+        return f"https://{bucket}.s3.example.com/{key}?expires={expires_in_seconds}"
 
 
 def fake_repository_factory(

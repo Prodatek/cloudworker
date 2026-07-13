@@ -23,3 +23,9 @@ variable "worker_instance_profile_name" {
   description = "IAM instance profile (from the iam module) to attach to worker instances."
   type        = string
 }
+
+variable "custom_ami_id" {
+  description = "Custom AMI id built by infra/packer (Playwright preinstalled). Falls back to the stock AL2023 SSM-parameter AMI when empty, so shell-only deployments aren't forced to build it first."
+  type        = string
+  default     = ""
+}

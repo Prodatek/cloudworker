@@ -6,8 +6,12 @@ from sqlalchemy.ext.asyncio import AsyncEngine
 
 from app.core.config import Settings, get_settings
 from app.core.logging import configure_logging
+from app.domain.entities import JobType
+from app.domain.job_executor import JobExecutor
 from app.domain.repositories import RepositoryBundle, RepositoryFactory
 from app.infrastructure.aws.ec2_worker_provisioner import EC2WorkerProvisioner
+from app.infrastructure.aws.playwright_job_executor import PlaywrightJobExecutor
+from app.infrastructure.aws.s3_artifact_store import S3ArtifactStore
 from app.infrastructure.aws.ssm_job_executor import SsmJobExecutor
 from app.infrastructure.database import create_engine, create_session_factory
 from app.infrastructure.db.job_repository import SqlAlchemyJobRepository
@@ -36,6 +40,26 @@ async def main() -> None:
 
     engine, repository_factory = _make_repository_factory(settings)
 
+    artifact_store = S3ArtifactStore(
+        region=settings.aws_region,
+        logs_bucket_name=settings.logs_bucket_name,
+        artifacts_bucket_name=settings.artifacts_bucket_name,
+    )
+    executors: dict[JobType, JobExecutor] = {
+        JobType.SHELL: SsmJobExecutor(
+            region=settings.aws_region,
+            logs_bucket_name=settings.logs_bucket_name,
+            execution_timeout_seconds=settings.job_execution_timeout_seconds,
+        ),
+        JobType.BROWSER: PlaywrightJobExecutor(
+            region=settings.aws_region,
+            logs_bucket_name=settings.logs_bucket_name,
+            artifacts_bucket_name=settings.artifacts_bucket_name,
+            artifact_store=artifact_store,
+            execution_timeout_seconds=settings.job_execution_timeout_seconds,
+        ),
+    }
+
     processor = JobProcessor(
         repository_factory=repository_factory,
         provisioner=EC2WorkerProvisioner(
@@ -43,11 +67,7 @@ async def main() -> None:
             launch_template_id=settings.launch_template_id,
             subnet_ids=settings.worker_subnet_id_list,
         ),
-        executor=SsmJobExecutor(
-            region=settings.aws_region,
-            logs_bucket_name=settings.logs_bucket_name,
-            execution_timeout_seconds=settings.job_execution_timeout_seconds,
-        ),
+        executors=executors,
         ssm_ready_timeout_seconds=settings.ssm_ready_timeout_seconds,
         job_execution_timeout_seconds=settings.job_execution_timeout_seconds,
         max_concurrent_jobs=settings.max_concurrent_jobs,

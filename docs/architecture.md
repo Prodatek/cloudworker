@@ -6,7 +6,7 @@
 api/            Thin HTTP controllers (FastAPI routers). Translate HTTP <-> domain calls.
 core/           Cross-cutting concerns: configuration, logging, middleware.
 domain/         Pure business entities, rules, and Protocol interfaces. No FastAPI/SQLAlchemy/boto3 imports.
-infrastructure/ Adapters to the outside world: Postgres (db/), AWS EC2/SSM (aws/).
+infrastructure/ Adapters to the outside world: Postgres (db/), AWS EC2/SSM/S3 (aws/).
 services/       Orchestrates domain repositories + infrastructure adapters (WorkerManager,
                 JobExecutor's caller JobProcessor); doesn't belong in api/ (not an HTTP
                 concern), domain/ (it performs I/O), or infrastructure/ (it doesn't itself
@@ -19,12 +19,15 @@ services/       Orchestrates domain repositories + infrastructure adapters (Work
 Dependencies point inward: `api`/`services` depend on `domain` and `infrastructure`; `domain`
 depends on nothing. This keeps business rules (e.g. "a job queue entry can only be claimed once")
 testable without a database, and swappable (e.g. moving from a Postgres-backed queue to SQS later
-would only touch `infrastructure`, not `domain` or `api`). The same pattern let Phase 5's
-`JobProcessor`/`WorkerManager`/`SsmJobExecutor` be tested entirely against in-memory fakes
-(`tests/unit/fakes.py`) without a database or AWS credentials — they depend on
-`JobRepository`/`WorkerRepository`/`WorkerProvisioner`/`JobExecutor` protocols, never on
-SQLAlchemy or boto3 directly. `JobProcessor` also depends on a `RepositoryFactory` protocol
-(not fixed repository instances) so each concurrently processed job gets its own DB session.
+would only touch `infrastructure`, not `domain` or `api`). The same pattern let
+`JobProcessor`/`WorkerManager`/`SsmJobExecutor`/`PlaywrightJobExecutor`/`S3ArtifactStore` be
+tested entirely against in-memory fakes (`tests/unit/fakes.py`) without a database or AWS
+credentials — they depend on
+`JobRepository`/`WorkerRepository`/`WorkerProvisioner`/`JobExecutor`/`ArtifactStore` protocols,
+never on SQLAlchemy or boto3 directly. `JobProcessor` also depends on a `RepositoryFactory`
+protocol (not fixed repository instances) so each concurrently processed job gets its own DB
+session, and on `dict[JobType, JobExecutor]` (not a single executor) so it can route each job
+to the right one without knowing anything about shell vs. browser payload shapes itself.
 
 ## Request flow (current)
 
@@ -50,7 +53,18 @@ client -> PrometheusMiddleware -> RequestContextMiddleware -> FastAPI router -> 
   succeeded/failed → terminate the worker. Runs as its own process (`app/worker_entrypoint.py`,
   the `worker` docker-compose service), decoupled from the API so EC2 provisioning/execution
   latency (can be minutes) never blocks a request or serializes other jobs.
-- **Artifact Service** — uploads/downloads logs, screenshots, videos to/from S3 (Phase 6).
+- **Browser jobs** *(shipped Phase 6)* — `app/infrastructure/aws/playwright_job_executor.py`'s
+  `PlaywrightJobExecutor` runs `job_type: browser` the same way `SsmJobExecutor` runs shell jobs
+  (same `JobExecutor` protocol, same `JobProcessor` orchestration), by dispatching the job's
+  script (base64-embedded in the SSM command) to a runner harness baked into the worker AMI
+  (`infra/packer/`) via SSM. The two executors share dispatch/poll mechanics
+  (`app/infrastructure/aws/ssm_command_dispatch.py`) since that part is identical — only what
+  gets sent and how the result is built differs.
+- **Artifact Service** *(shipped Phase 6)* — `app/infrastructure/aws/s3_artifact_store.py`'s
+  `S3ArtifactStore` lists a job's objects across the logs/artifacts buckets and generates
+  presigned GET URLs, exposed via `GET /api/v1/jobs/{id}/artifacts`. Presigned URL generation is
+  pure local signing — no AWS call — which made it possible to get real test coverage of this
+  piece without moto or credentials, unlike almost everything else touching AWS in this project.
 - **Authentication** — API keys or JWT for programmatic access (Phase 2).
 - **Dashboard** — React + TypeScript frontend (Phase 7).
 
@@ -61,7 +75,7 @@ client -> PrometheusMiddleware -> RequestContextMiddleware -> FastAPI router -> 
 3. **AWS Infra (Terraform)** *(shipped as IaC — not yet applied to a real AWS account)* — VPC, IAM/SSM role, S3 buckets, EC2 launch template referencing a prebuilt AMI.
 4. **Worker Manager** *(shipped)* — boto3-driven EC2 provisioning/termination, worker lifecycle state machine, queue consumer.
 5. **Shell Execution** *(shipped)* — SSM SendCommand for shell jobs, full output to S3 (SSM-native), concurrent job processing, cancellation/timeouts.
-6. **Browser Automation** — Playwright jobs, screenshot/video capture, Artifact Service, presigned URL downloads.
+6. **Browser Automation** *(shipped)* — Playwright jobs (one universal AMI via Packer), screenshot/video capture, Artifact Service, presigned URL downloads.
 7. **Dashboard** — React + TypeScript UI: submit jobs, tail logs live, browse artifacts.
 8. **Hardening & Beta** — metrics dashboards, guaranteed cleanup (idle/orphan reaper), CD pipeline, security review, install docs.
 

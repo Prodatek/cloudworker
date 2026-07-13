@@ -23,7 +23,7 @@ def _make_processor(
     return JobProcessor(
         repository_factory=fake_repository_factory(job_repository, worker_repository),
         provisioner=provisioner,
-        executor=executor,
+        executors={JobType.SHELL: executor},
         ssm_ready_timeout_seconds=1.0,
         job_execution_timeout_seconds=5.0,
         max_concurrent_jobs=max_concurrent_jobs,
@@ -103,6 +103,31 @@ async def test_run_job_fails_non_shell_job_type_without_provisioning() -> None:
     assert job_repository.jobs[job.id].status == JobStatus.FAILED
     assert provisioner.launched_job_ids == []
     assert executor.executed == []
+
+
+async def test_run_job_routes_browser_jobs_to_their_own_executor() -> None:
+    job_repository = FakeJobRepository()
+    worker_repository = FakeWorkerRepository()
+    provisioner = FakeWorkerProvisioner(ssm_ready=True)
+    shell_executor = FakeJobExecutor(succeed=True)
+    browser_executor = FakeJobExecutor(succeed=True)
+    job = job_repository.seed_queued_job(job_type=JobType.BROWSER)
+    job.payload = {"script": "page.goto('https://example.com')"}
+    processor = JobProcessor(
+        repository_factory=fake_repository_factory(job_repository, worker_repository),
+        provisioner=provisioner,
+        executors={JobType.SHELL: shell_executor, JobType.BROWSER: browser_executor},
+        ssm_ready_timeout_seconds=1.0,
+        job_execution_timeout_seconds=5.0,
+        max_concurrent_jobs=5,
+    )
+
+    await _run_briefly(processor)
+
+    assert job_repository.jobs[job.id].status == JobStatus.SUCCEEDED
+    assert shell_executor.executed == []
+    assert len(browser_executor.executed) == 1
+    assert browser_executor.executed[0][:2] == (job.id, "page.goto('https://example.com')")
 
 
 async def test_multiple_jobs_are_processed_concurrently() -> None:

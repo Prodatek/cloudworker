@@ -33,4 +33,5 @@ module "compute" {
   instance_type                = var.instance_type
   worker_security_group_id     = module.networking.worker_security_group_id
   worker_instance_profile_name = module.iam.worker_instance_profile_name
+  custom_ami_id                = var.custom_ami_id
 }

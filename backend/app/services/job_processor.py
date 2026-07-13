@@ -28,14 +28,14 @@ class JobProcessor:
         self,
         repository_factory: RepositoryFactory,
         provisioner: WorkerProvisioner,
-        executor: JobExecutor,
+        executors: dict[JobType, JobExecutor],
         ssm_ready_timeout_seconds: float,
         job_execution_timeout_seconds: float,
         max_concurrent_jobs: int,
     ) -> None:
         self._repository_factory = repository_factory
         self._provisioner = provisioner
-        self._executor = executor
+        self._executors = executors
         self._ssm_ready_timeout_seconds = ssm_ready_timeout_seconds
         self._job_execution_timeout_seconds = job_execution_timeout_seconds
         self._max_concurrent_jobs = max_concurrent_jobs
@@ -85,7 +85,8 @@ class JobProcessor:
             logger.error("Unhandled exception processing job: %s", exc, exc_info=exc)
 
     async def _run_job(self, job: Job) -> None:
-        if job.job_type != JobType.SHELL:
+        executor = self._executors.get(job.job_type)
+        if executor is None:
             async with self._repository_factory() as repos:
                 await repos.job_repository.fail(
                     job.id,
@@ -112,10 +113,9 @@ class JobProcessor:
                 )
             return
 
-        command = str(job.payload.get("command", ""))
         try:
             execution_result = await asyncio.wait_for(
-                self._executor.execute(job.id, command, worker.instance_id),
+                executor.execute(job, worker.instance_id),
                 timeout=self._job_execution_timeout_seconds + _EXECUTOR_WAIT_SLACK_SECONDS,
             )
         except Exception as exc:

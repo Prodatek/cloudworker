@@ -45,3 +45,9 @@ variable "artifacts_retention_days" {
   type        = number
   default     = 90
 }
+
+variable "custom_ami_id" {
+  description = "Custom AMI id built by infra/packer (Playwright preinstalled). Empty falls back to the stock AL2023 SSM-parameter AMI."
+  type        = string
+  default     = ""
+}

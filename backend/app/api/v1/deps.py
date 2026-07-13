@@ -4,6 +4,7 @@ from fastapi import Depends, HTTPException, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
+from app.domain.artifact_store import ArtifactStore
 from app.domain.entities import User
 from app.infrastructure.database import get_db_session
 from app.infrastructure.db.api_key_repository import SqlAlchemyApiKeyRepository
@@ -57,6 +58,14 @@ def get_worker_manager(
         provisioner=provisioner,
         ssm_ready_timeout_seconds=settings.ssm_ready_timeout_seconds,
     )
+
+
+def get_artifact_store(request: Request) -> ArtifactStore | None:
+    """Returns None (not an error) when the artifact/logs buckets aren't configured —
+    same reasoning as get_worker_manager: expected in local dev before Phase 3's
+    Terraform has actually been applied.
+    """
+    return request.app.state.artifact_store
 
 
 async def get_current_user(

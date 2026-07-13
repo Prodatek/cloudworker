@@ -3,8 +3,16 @@ import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 
-from app.api.v1.deps import get_current_user, get_job_repository, get_worker_manager
+from app.api.v1.deps import (
+    get_artifact_store,
+    get_current_user,
+    get_job_repository,
+    get_worker_manager,
+)
+from app.api.v1.schemas.artifact import ArtifactResponse, JobArtifactsResponse
 from app.api.v1.schemas.job import JobCreateRequest, JobListResponse, JobResponse
+from app.core.config import get_settings
+from app.domain.artifact_store import ArtifactStore
 from app.domain.entities import JobStatus, User
 from app.infrastructure.db.job_repository import SqlAlchemyJobRepository
 from app.services.worker_manager import WorkerManager
@@ -78,3 +86,33 @@ async def cancel_job(
             )
 
     return JobResponse.from_entity(cancelled)
+
+
+@router.get("/{job_id}/artifacts", response_model=JobArtifactsResponse)
+async def get_job_artifacts(
+    job_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    job_repository: SqlAlchemyJobRepository = Depends(get_job_repository),
+    artifact_store: ArtifactStore | None = Depends(get_artifact_store),
+) -> JobArtifactsResponse:
+    job = await job_repository.get_by_id_for_user(job_id, current_user.id)
+    if job is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Job not found")
+
+    if artifact_store is None:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Artifact storage is not configured (missing AWS logs/artifacts buckets)",
+        )
+
+    expiry_seconds = get_settings().artifact_url_expiry_seconds
+    refs = await artifact_store.list_job_artifacts(job_id)
+    artifacts = [
+        ArtifactResponse.from_ref(
+            ref,
+            url=await artifact_store.generate_presigned_url(ref.bucket, ref.key, expiry_seconds),
+            expires_in_seconds=expiry_seconds,
+        )
+        for ref in refs
+    ]
+    return JobArtifactsResponse(artifacts=artifacts)
