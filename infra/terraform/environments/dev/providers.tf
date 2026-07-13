@@ -8,16 +8,16 @@ terraform {
     }
   }
 
-  # Remote state (S3 + DynamoDB lock table) is bootstrapped in Phase 3, once
-  # there are real resources whose state is worth protecting. Local state is
-  # fine for an empty scaffold.
-  # backend "s3" {
-  #   bucket         = "cloudworker-terraform-state-dev"
-  #   key            = "cloudworker/dev/terraform.tfstate"
-  #   region         = "us-east-1"
-  #   dynamodb_table = "cloudworker-terraform-locks"
-  #   encrypt        = true
-  # }
+  # Bucket/table names must match infra/terraform/bootstrap's output exactly (backend
+  # blocks can't reference variables/outputs, so these are hardcoded literals). Bootstrap
+  # must be applied once, manually, before `terraform init` here can succeed.
+  backend "s3" {
+    bucket         = "cloudworker-terraform-state-dev"
+    key            = "cloudworker/dev/terraform.tfstate"
+    region         = "us-east-1"
+    dynamodb_table = "cloudworker-terraform-locks-dev"
+    encrypt        = true
+  }
 }
 
 provider "aws" {

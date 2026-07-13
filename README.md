@@ -6,10 +6,11 @@ automatically tears the workers down when the job finishes.
 
 ## Status
 
-**Phase 2 of 8 (Authentication + Job Domain + Queue)** — see
-[`docs/architecture.md`](docs/architecture.md) for the full roadmap,
-[`docs/phase-1.md`](docs/phase-1.md) and [`docs/phase-2.md`](docs/phase-2.md) for what shipped in
-each phase.
+**Phase 3 of 8 (AWS Infrastructure via Terraform)** — see
+[`docs/architecture.md`](docs/architecture.md) for the full roadmap, and
+[`docs/phase-1.md`](docs/phase-1.md)/[`docs/phase-2.md`](docs/phase-2.md)/[`docs/phase-3.md`](docs/phase-3.md)
+for what shipped in each phase. Phase 3 is IaC only — it has not yet been applied to a real AWS
+account (see `docs/phase-3.md` for why).
 
 ## Quickstart
 
@@ -59,18 +60,20 @@ mypy backend/app
 ## Repository layout
 
 ```
-backend/            FastAPI application, tests, requirements
-infra/terraform/    AWS infrastructure as code (scaffolding only until Phase 3)
-docs/               Architecture notes, phase reports, example API calls
-.github/workflows/  CI: lint, test, terraform validate
-docker-compose.yml  Local dev: Postgres + API
+backend/                       FastAPI application, tests, requirements
+infra/terraform/bootstrap/     One-time remote state backend (S3 bucket + DynamoDB lock table)
+infra/terraform/modules/       networking, iam, storage, compute
+infra/terraform/environments/  Thin per-environment composition of the modules above
+docs/                          Architecture notes, phase reports, example API calls
+.github/workflows/             CI: lint, test, terraform validate
+docker-compose.yml             Local dev: Postgres + API
 ```
 
 ## Roadmap
 
 1. **Foundations** *(shipped)* — FastAPI skeleton, Postgres wiring, Docker Compose, CI, health/metrics, OpenAPI docs
-2. **Authentication + Job Domain + Queue** *(this phase)* — API key auth, `users`/`jobs` tables, Postgres-backed job queue, CRUD API
-3. AWS infrastructure via Terraform (VPC, IAM/SSM, S3, EC2 launch template)
+2. **Authentication + Job Domain + Queue** *(shipped)* — API key auth, `users`/`jobs` tables, Postgres-backed job queue, CRUD API
+3. **AWS Infrastructure via Terraform** *(this phase, IaC only)* — VPC (private-only, SSM/S3 VPC endpoints), IAM/SSM role, S3 buckets, EC2 launch template
 4. Worker Manager (provision/terminate EC2 workers, lifecycle state machine)
 5. Shell job execution over SSM + log streaming to S3
 6. Playwright browser-automation jobs + Artifact Service

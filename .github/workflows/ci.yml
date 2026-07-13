@@ -50,14 +50,23 @@ jobs:
 
   terraform:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        working-directory:
+          - infra/terraform/bootstrap
+          - infra/terraform/modules/networking
+          - infra/terraform/modules/iam
+          - infra/terraform/modules/storage
+          - infra/terraform/modules/compute
+          - infra/terraform/environments/dev
     defaults:
       run:
-        working-directory: infra/terraform/environments/dev
+        working-directory: ${{ matrix.working-directory }}
     steps:
       - uses: actions/checkout@v4
       - uses: hashicorp/setup-terraform@v3
         with:
           terraform_version: "1.9.8"
-      - run: terraform fmt -check -recursive ../../..
+      - run: terraform fmt -check
       - run: terraform init -backend=false
       - run: terraform validate

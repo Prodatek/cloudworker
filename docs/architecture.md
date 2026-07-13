@@ -37,7 +37,7 @@ client -> PrometheusMiddleware -> RequestContextMiddleware -> FastAPI router -> 
 
 1. **Foundations** *(shipped)* — FastAPI skeleton, Postgres wiring, Docker Compose, CI, health/metrics endpoints, OpenAPI docs.
 2. **Auth + Job Domain** *(shipped)* — API key auth, `users`/`jobs` tables (Alembic), Postgres-backed job queue, CRUD API.
-3. **AWS Infra (Terraform)** — VPC, IAM/SSM role, S3 buckets, EC2 launch template referencing a prebuilt AMI.
+3. **AWS Infra (Terraform)** *(shipped as IaC — not yet applied to a real AWS account)* — VPC, IAM/SSM role, S3 buckets, EC2 launch template referencing a prebuilt AMI.
 4. **Worker Manager** — boto3-driven EC2 provisioning/termination, worker lifecycle state machine, queue consumer.
 5. **Shell Execution** — SSM RunCommand for shell jobs, log streaming to S3 + DB, cancellation/timeouts.
 6. **Browser Automation** — Playwright jobs, screenshot/video capture, Artifact Service, presigned URL downloads.

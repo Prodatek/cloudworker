@@ -1,17 +1,36 @@
-# Intentionally empty in Phase 1: no AWS resources are created yet.
-#
-# Phase 3 populates this with module calls for:
-#   - networking (VPC, subnets, security groups)
-#   - iam (SSM instance profile/role for ephemeral workers)
-#   - storage (S3 buckets for logs/artifacts)
-#   - compute (EC2 launch template using the prebuilt AMI)
-#
-# See ../../modules/README.md for the planned module layout.
+module "networking" {
+  source = "../../modules/networking"
 
-locals {
-  common_tags = {
-    Project     = var.project_name
-    Environment = var.environment
-    ManagedBy   = "terraform"
-  }
+  project_name = var.project_name
+  environment  = var.environment
+  vpc_cidr     = var.vpc_cidr
+  az_count     = var.az_count
+}
+
+module "storage" {
+  source = "../../modules/storage"
+
+  project_name             = var.project_name
+  environment              = var.environment
+  logs_retention_days      = var.logs_retention_days
+  artifacts_retention_days = var.artifacts_retention_days
+}
+
+module "iam" {
+  source = "../../modules/iam"
+
+  project_name         = var.project_name
+  environment          = var.environment
+  logs_bucket_arn      = module.storage.logs_bucket_arn
+  artifacts_bucket_arn = module.storage.artifacts_bucket_arn
+}
+
+module "compute" {
+  source = "../../modules/compute"
+
+  project_name                 = var.project_name
+  environment                  = var.environment
+  instance_type                = var.instance_type
+  worker_security_group_id     = module.networking.worker_security_group_id
+  worker_instance_profile_name = module.iam.worker_instance_profile_name
 }
