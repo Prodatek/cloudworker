@@ -69,7 +69,7 @@ async def cancel_job(
 
     if existing.status == JobStatus.RUNNING:
         if worker_manager is not None:
-            await worker_manager.cancel_job_worker(job_id)
+            await worker_manager.terminate_worker_for_job(job_id)
         else:
             logger.warning(
                 "Cancelled running job %s but worker provisioning isn't configured; "

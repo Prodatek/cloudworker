@@ -1,7 +1,12 @@
+import asyncio
 import uuid
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 
 from app.domain.entities import Job, JobStatus, JobType, Worker, WorkerStatus
+from app.domain.job_executor import JobExecutionResult
+from app.domain.repositories import RepositoryBundle
 from app.domain.worker_provisioner import ProvisioningError
 
 
@@ -38,6 +43,14 @@ class FakeJobRepository:
             return None
         job.status = JobStatus.FAILED
         job.error_message = error_message
+        return job
+
+    async def complete(self, job_id: uuid.UUID, result: dict) -> Job | None:
+        job = self.jobs.get(job_id)
+        if job is None or job.status != JobStatus.RUNNING:
+            return None
+        job.status = JobStatus.SUCCEEDED
+        job.result = result
         return job
 
     async def cancel(self, job_id: uuid.UUID, user_id: uuid.UUID) -> Job | None:
@@ -129,3 +142,61 @@ class FakeWorkerProvisioner:
 
     async def terminate(self, instance_id: str) -> None:
         self.terminated_instance_ids.append(instance_id)
+
+
+class FakeJobExecutor:
+    """Configurable fake JobExecutor recording calls for assertions.
+
+    `delay_seconds` lets concurrency tests prove two jobs actually overlap in time,
+    rather than one finishing before the other starts.
+    """
+
+    def __init__(
+        self,
+        succeed: bool = True,
+        raise_error: bool = False,
+        delay_seconds: float = 0.0,
+    ) -> None:
+        self.succeed = succeed
+        self.raise_error = raise_error
+        self.delay_seconds = delay_seconds
+        self.executed: list[tuple[uuid.UUID, str, str]] = []
+        self._active = 0
+        self.max_concurrent_observed = 0
+
+    async def execute(
+        self, job_id: uuid.UUID, command: str, instance_id: str
+    ) -> JobExecutionResult:
+        self._active += 1
+        self.max_concurrent_observed = max(self.max_concurrent_observed, self._active)
+        try:
+            self.executed.append((job_id, command, instance_id))
+            if self.delay_seconds:
+                await asyncio.sleep(self.delay_seconds)
+            if self.raise_error:
+                raise RuntimeError("simulated execution transport failure")
+            if self.succeed:
+                return JobExecutionResult(succeeded=True, exit_code=0, result={"exit_code": 0})
+            return JobExecutionResult(
+                succeeded=False, exit_code=1, error_message="command exited non-zero"
+            )
+        finally:
+            self._active -= 1
+
+
+def fake_repository_factory(
+    job_repository: FakeJobRepository, worker_repository: FakeWorkerRepository
+):
+    """Builds a RepositoryFactory-shaped callable over the given fakes.
+
+    Unlike the real SQLAlchemy-backed factory, this doesn't open a new session per
+    call — it just re-wraps the same two fake repository instances each time, which is
+    exactly what tests want: all "concurrent tasks" observe and mutate the same
+    in-memory state.
+    """
+
+    @asynccontextmanager
+    async def factory() -> AsyncIterator[RepositoryBundle]:
+        yield RepositoryBundle(job_repository=job_repository, worker_repository=worker_repository)
+
+    return factory

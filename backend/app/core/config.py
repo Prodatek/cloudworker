@@ -29,6 +29,11 @@ class Settings(BaseSettings):
     ssm_ready_timeout_seconds: float = 120.0
     worker_poll_interval_seconds: float = 5.0
 
+    # Phase 3's storage module `logs` bucket output — where SSM writes full command output.
+    logs_bucket_name: str = ""
+    job_execution_timeout_seconds: float = 900.0
+    max_concurrent_jobs: int = 5
+
     @property
     def worker_subnet_id_list(self) -> list[str]:
         return [s.strip() for s in self.worker_subnet_ids.split(",") if s.strip()]

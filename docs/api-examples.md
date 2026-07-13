@@ -85,17 +85,55 @@ HTTP/1.1 201 Created
 }
 ```
 
-Once a Worker Manager process is running (Phase 4; see `docker-compose.yml`'s `worker` service)
-and pointed at a real, Terraform-applied AWS account, this job is picked up automatically: its
-status moves to `running` and an EC2 worker is provisioned for it. Actually executing the job's
-command on that worker ships in Phase 5.
+`payload.command` is required and must be a non-empty string for `job_type: shell` — an empty or
+missing command is rejected immediately:
 
-## List / get / cancel a job
+```bash
+curl -i -X POST http://localhost:8000/api/v1/jobs \
+  -H "Authorization: Bearer $API_KEY" -H "Content-Type: application/json" \
+  -d '{"job_type": "shell", "payload": {}}'
+# HTTP/1.1 422 Unprocessable Entity
+```
+
+Once a Worker Manager process is running (Phase 4/5; see `docker-compose.yml`'s `worker` service)
+and pointed at a real, Terraform-applied AWS account, this job is picked up automatically: an EC2
+worker is provisioned for it, the command actually runs on it over SSM, and the job's `status`
+moves through `running` → `succeeded`/`failed`. Polling `GET /api/v1/jobs/{id}` shows the
+progression:
+
+```bash
+curl -H "Authorization: Bearer $API_KEY" http://localhost:8000/api/v1/jobs/3fa5c2e1-...
+```
+
+```json
+{
+  "id": "3fa5c2e1-...",
+  "job_type": "shell",
+  "status": "succeeded",
+  "payload": {"command": "echo hi"},
+  "result": {
+    "exit_code": 0,
+    "status": "Success",
+    "s3_bucket": "cloudworker-dev-<account-id>-logs",
+    "stdout_key": "jobs/3fa5c2e1-.../<ssm-command-id>/<instance-id>/awsrunShellScript/0.awsrunShellScript/stdout",
+    "stderr_key": "jobs/3fa5c2e1-.../<ssm-command-id>/<instance-id>/awsrunShellScript/0.awsrunShellScript/stderr"
+  },
+  "error_message": null,
+  "created_at": "2026-07-13T12:00:00Z",
+  "updated_at": "2026-07-13T12:00:05Z",
+  "started_at": "2026-07-13T12:00:01Z",
+  "completed_at": "2026-07-13T12:00:05Z"
+}
+```
+
+`result` holds the exit code plus S3 key references to the full, untruncated stdout/stderr — SSM
+writes those directly to the logs bucket. Fetching the actual log contents from S3 (e.g. via
+presigned URLs, with proper access control) is Phase 6's Artifact Service, not this phase.
+
+## List / cancel a job
 
 ```bash
 curl -H "Authorization: Bearer $API_KEY" http://localhost:8000/api/v1/jobs
-
-curl -H "Authorization: Bearer $API_KEY" http://localhost:8000/api/v1/jobs/3fa5c2e1-...
 
 curl -X POST -H "Authorization: Bearer $API_KEY" \
   http://localhost:8000/api/v1/jobs/3fa5c2e1-.../cancel

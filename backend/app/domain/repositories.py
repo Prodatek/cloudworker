@@ -1,4 +1,7 @@
 import uuid
+from collections.abc import Callable
+from contextlib import AbstractAsyncContextManager
+from dataclasses import dataclass
 from typing import Protocol
 
 from app.domain.entities import ApiKey, Job, User, Worker
@@ -48,6 +51,12 @@ class JobRepository(Protocol):
         """
         ...
 
+    async def complete(self, job_id: uuid.UUID, result: dict) -> Job | None:
+        """Atomically transitions a running job to succeeded, storing its result.
+        Returns None if the job wasn't running.
+        """
+        ...
+
 
 class WorkerRepository(Protocol):
     async def create(self, job_id: uuid.UUID) -> Worker: ...
@@ -63,3 +72,19 @@ class WorkerRepository(Protocol):
     async def mark_terminated(self, worker_id: uuid.UUID) -> Worker: ...
 
     async def mark_failed(self, worker_id: uuid.UUID, failure_reason: str) -> Worker: ...
+
+
+@dataclass
+class RepositoryBundle:
+    """A JobRepository/WorkerRepository pair sharing one unit of work (DB session)."""
+
+    job_repository: JobRepository
+    worker_repository: WorkerRepository
+
+
+# Called with no arguments, returns an async context manager yielding a fresh
+# RepositoryBundle (backed by its own session) for the duration of the `with` block.
+# JobProcessor depends on this instead of fixed repository instances so each concurrently
+# processed job gets its own session; only worker_entrypoint.py (the composition root)
+# knows this is actually backed by SQLAlchemy.
+RepositoryFactory = Callable[[], AbstractAsyncContextManager[RepositoryBundle]]

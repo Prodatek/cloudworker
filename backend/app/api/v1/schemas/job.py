@@ -1,8 +1,8 @@
 import uuid
 from datetime import datetime
-from typing import Any
+from typing import Any, Self
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from app.domain.entities import Job, JobStatus, JobType
 
@@ -10,6 +10,16 @@ from app.domain.entities import Job, JobStatus, JobType
 class JobCreateRequest(BaseModel):
     job_type: JobType
     payload: dict[str, Any] = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def _validate_shell_command(self) -> Self:
+        if self.job_type == JobType.SHELL:
+            command = self.payload.get("command")
+            if not isinstance(command, str) or not command.strip():
+                raise ValueError(
+                    "payload.command is required and must be a non-empty string for shell jobs"
+                )
+        return self
 
 
 class JobResponse(BaseModel):

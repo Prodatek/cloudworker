@@ -26,6 +26,29 @@ def test_job_create_request_rejects_unknown_job_type() -> None:
         JobCreateRequest(job_type="not-a-real-type", payload={})
 
 
+def test_job_create_request_rejects_shell_job_missing_command() -> None:
+    with pytest.raises(ValidationError):
+        JobCreateRequest(job_type="shell", payload={})
+
+
+def test_job_create_request_rejects_shell_job_with_blank_command() -> None:
+    with pytest.raises(ValidationError):
+        JobCreateRequest(job_type="shell", payload={"command": "   "})
+
+
+def test_job_create_request_rejects_shell_job_with_non_string_command() -> None:
+    with pytest.raises(ValidationError):
+        JobCreateRequest(job_type="shell", payload={"command": 123})
+
+
+def test_job_create_request_accepts_browser_job_without_command() -> None:
+    # Browser jobs aren't validated the same way shell jobs are (Phase 6 will define
+    # their own payload shape) — an empty payload is fine for now.
+    request = JobCreateRequest(job_type="browser", payload={})
+
+    assert request.payload == {}
+
+
 def test_job_response_from_entity_round_trips_fields() -> None:
     now = datetime.now(UTC)
     job = Job(

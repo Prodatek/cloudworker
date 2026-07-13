@@ -6,11 +6,11 @@ automatically tears the workers down when the job finishes.
 
 ## Status
 
-**Phase 4 of 8 (Worker Manager)** — see [`docs/architecture.md`](docs/architecture.md) for the
-full roadmap, and `docs/phase-1.md` through `docs/phase-4.md` for what shipped in each phase.
-Phase 3's AWS infra is IaC only (not yet applied to a real account), so Phase 4's worker
-provisioning is only proven via `moto`-mocked tests in this environment — see
-[`docs/phase-4.md`](docs/phase-4.md) for what that does and doesn't prove.
+**Phase 5 of 8 (Shell Job Execution over SSM)** — see [`docs/architecture.md`](docs/architecture.md)
+for the full roadmap, and `docs/phase-1.md` through `docs/phase-5.md` for what shipped in each
+phase. Phase 3's AWS infra is IaC only (not yet applied to a real account), so Phases 4–5's worker
+provisioning/execution are only proven via `moto`-mocked and hand-mocked tests in this
+environment — see [`docs/phase-5.md`](docs/phase-5.md) for what that does and doesn't prove.
 
 ## Quickstart
 
@@ -78,8 +78,8 @@ docker-compose.yml             Local dev: Postgres + API
 1. **Foundations** *(shipped)* — FastAPI skeleton, Postgres wiring, Docker Compose, CI, health/metrics, OpenAPI docs
 2. **Authentication + Job Domain + Queue** *(shipped)* — API key auth, `users`/`jobs` tables, Postgres-backed job queue, CRUD API
 3. **AWS Infrastructure via Terraform** *(shipped, IaC only)* — VPC (private-only, SSM/S3 VPC endpoints), IAM/SSM role, S3 buckets, EC2 launch template
-4. **Worker Manager** *(this phase)* — provisions/terminates EC2 workers, lifecycle state machine, `moto`-tested
-5. Shell job execution over SSM + log streaming to S3
+4. **Worker Manager** *(shipped)* — provisions/terminates EC2 workers, lifecycle state machine, `moto`-tested
+5. **Shell Job Execution over SSM** *(this phase)* — SSM SendCommand dispatch, full output to S3, concurrent job processing, payload validation
 6. Playwright browser-automation jobs + Artifact Service
 7. React + TypeScript dashboard
 8. Hardening: metrics dashboards, auto-cleanup guarantees, deploy pipeline, security review, beta packaging

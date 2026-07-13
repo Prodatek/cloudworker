@@ -32,7 +32,7 @@ async def test_claim_next_job_is_safe_under_concurrent_claimers(
     for i in range(job_count):
         response = await client.post(
             "/api/v1/jobs",
-            json={"job_type": "shell", "payload": {"i": i}},
+            json={"job_type": "shell", "payload": {"command": f"echo {i}"}},
             headers=headers,
         )
         assert response.status_code == 201

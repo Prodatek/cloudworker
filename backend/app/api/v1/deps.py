@@ -41,7 +41,6 @@ def get_worker_repository(
 
 def get_worker_manager(
     request: Request,
-    job_repository: SqlAlchemyJobRepository = Depends(get_job_repository),
     worker_repository: SqlAlchemyWorkerRepository = Depends(get_worker_repository),
 ) -> WorkerManager | None:
     """Returns None (not an error) when AWS isn't configured — expected in local dev
@@ -54,7 +53,6 @@ def get_worker_manager(
         return None
     settings = get_settings()
     return WorkerManager(
-        job_repository=job_repository,
         worker_repository=worker_repository,
         provisioner=provisioner,
         ssm_ready_timeout_seconds=settings.ssm_ready_timeout_seconds,

@@ -1,49 +1,45 @@
-import asyncio
 import logging
 import uuid
 
-from app.domain.entities import WorkerStatus
-from app.domain.repositories import JobRepository, WorkerRepository
+from app.domain.entities import Worker, WorkerStatus
+from app.domain.repositories import WorkerRepository
 from app.domain.worker_provisioner import ProvisioningError, WorkerProvisioner
 
 logger = logging.getLogger("cloudworker.worker_manager")
 
 
 class WorkerManager:
-    """Orchestrates claiming jobs and provisioning/tearing down their workers.
+    """Worker lifecycle only: provision a worker for a job, or terminate one.
 
-    Depends only on the JobRepository/WorkerRepository/WorkerProvisioner protocols, not
-    on SQLAlchemy or boto3 directly, so it can be tested against in-memory fakes and
-    reused unchanged whether it's driven by the standalone poll loop (run_forever) or a
-    single call from the API (cancel_job_worker).
+    Deliberately knows nothing about the jobs table or the queue — those are
+    JobProcessor's concern. Depends only on WorkerRepository/WorkerProvisioner
+    protocols, not SQLAlchemy or boto3, so it's testable against in-memory fakes.
+    Used two ways: request-scoped from the API (cancel endpoint, one instance per
+    request) and per-task from JobProcessor (one instance per concurrently
+    processed job, each with its own session-backed WorkerRepository).
     """
 
     def __init__(
         self,
-        job_repository: JobRepository,
         worker_repository: WorkerRepository,
         provisioner: WorkerProvisioner,
         ssm_ready_timeout_seconds: float,
     ) -> None:
-        self._job_repository = job_repository
         self._worker_repository = worker_repository
         self._provisioner = provisioner
         self._ssm_ready_timeout_seconds = ssm_ready_timeout_seconds
 
-    async def process_next_job(self) -> bool:
-        """Claims one job and provisions a worker for it, if one is queued.
+    async def provision_worker(self, job_id: uuid.UUID) -> Worker:
+        """Creates a worker, launches an instance, waits for SSM readiness, marks ready.
 
-        Returns True if a job was claimed (regardless of whether provisioning
-        succeeded), False if the queue was empty.
+        On any failure, marks the worker failed and terminates any instance that was
+        launched, then re-raises — the caller (JobProcessor) is responsible for failing
+        the job itself, since this class doesn't touch the jobs table.
         """
-        job = await self._job_repository.claim_next_job()
-        if job is None:
-            return False
-
-        worker = await self._worker_repository.create(job.id)
+        worker = await self._worker_repository.create(job_id)
         instance_id: str | None = None
         try:
-            instance_id = await self._provisioner.launch(job.id)
+            instance_id = await self._provisioner.launch(job_id)
             await self._worker_repository.mark_provisioning(worker.id, instance_id)
 
             ready = await self._provisioner.wait_until_ssm_ready(
@@ -55,19 +51,22 @@ class WorkerManager:
                     f"{self._ssm_ready_timeout_seconds}s"
                 )
 
-            await self._worker_repository.mark_ready(worker.id)
-            logger.info("Worker ready for job %s (instance %s)", job.id, instance_id)
+            worker = await self._worker_repository.mark_ready(worker.id)
+            logger.info("Worker ready for job %s (instance %s)", job_id, instance_id)
+            return worker
         except Exception as exc:
-            logger.warning("Provisioning failed for job %s: %s", job.id, exc)
+            logger.warning("Provisioning failed for job %s: %s", job_id, exc)
             await self._worker_repository.mark_failed(worker.id, failure_reason=str(exc))
             if instance_id is not None:
                 await self._provisioner.terminate(instance_id)
-            await self._job_repository.fail(job.id, error_message=str(exc))
+            raise
 
-        return True
+    async def terminate_worker_for_job(self, job_id: uuid.UUID) -> None:
+        """Terminates the job's worker, if one exists and isn't already terminated/failed.
 
-    async def cancel_job_worker(self, job_id: uuid.UUID) -> None:
-        """Terminates the job's worker, if one exists and isn't already terminated/failed."""
+        Used both when a running job is cancelled and after a job finishes executing
+        (success or failure) — the termination itself is identical either way.
+        """
         worker = await self._worker_repository.get_by_job_id(job_id)
         if worker is None or worker.status in (WorkerStatus.TERMINATED, WorkerStatus.FAILED):
             return
@@ -76,10 +75,3 @@ class WorkerManager:
         if worker.instance_id is not None:
             await self._provisioner.terminate(worker.instance_id)
         await self._worker_repository.mark_terminated(worker.id)
-
-    async def run_forever(self, poll_interval_seconds: float) -> None:
-        logger.info("WorkerManager starting poll loop (interval=%ss)", poll_interval_seconds)
-        while True:
-            claimed = await self.process_next_job()
-            if not claimed:
-                await asyncio.sleep(poll_interval_seconds)

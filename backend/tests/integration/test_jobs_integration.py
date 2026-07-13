@@ -50,7 +50,7 @@ async def test_user_cannot_see_another_users_job(client: AsyncClient, unique_ema
     owner_headers = auth_headers(owner["api_key"])
     create_response = await client.post(
         "/api/v1/jobs",
-        json={"job_type": "shell", "payload": {}},
+        json={"job_type": "shell", "payload": {"command": "echo hi"}},
         headers=owner_headers,
     )
     job_id = create_response.json()["id"]
@@ -62,3 +62,18 @@ async def test_user_cannot_see_another_users_job(client: AsyncClient, unique_ema
     response = await client.get(f"/api/v1/jobs/{job_id}", headers=other_headers)
 
     assert response.status_code == 404
+
+
+async def test_create_shell_job_without_command_is_rejected(
+    client: AsyncClient, unique_email: str
+) -> None:
+    registration = await register_user(client, unique_email)
+    headers = auth_headers(registration["api_key"])
+
+    response = await client.post(
+        "/api/v1/jobs",
+        json={"job_type": "shell", "payload": {}},
+        headers=headers,
+    )
+
+    assert response.status_code == 422

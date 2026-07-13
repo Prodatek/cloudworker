@@ -1,7 +1,8 @@
 import uuid
 from typing import Any
 
-from sqlalchemy import select, text
+from sqlalchemy import bindparam, select, text
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.domain.entities import Job, JobStatus, JobType
@@ -42,6 +43,16 @@ _FAIL_IF_RUNNING_SQL = text(
               created_at, updated_at, started_at, completed_at
     """
 )
+
+_COMPLETE_IF_RUNNING_SQL = text(
+    """
+    UPDATE jobs
+    SET status = 'succeeded', result = :result, updated_at = now(), completed_at = now()
+    WHERE id = :job_id AND status = 'running'
+    RETURNING id, user_id, job_type, status, payload, result, error_message,
+              created_at, updated_at, started_at, completed_at
+    """
+).bindparams(bindparam("result", type_=JSONB))
 
 
 def _row_to_entity(row: Any) -> Job:
@@ -130,5 +141,14 @@ class SqlAlchemyJobRepository:
             _FAIL_IF_RUNNING_SQL, {"job_id": job_id, "error_message": error_message}
         )
         row = result.fetchone()
+        await self._session.commit()
+        return _row_to_entity(row) if row else None
+
+    async def complete(self, job_id: uuid.UUID, result: dict) -> Job | None:
+        # Self-commits, same reasoning as fail() above.
+        execution_result = await self._session.execute(
+            _COMPLETE_IF_RUNNING_SQL, {"job_id": job_id, "result": result}
+        )
+        row = execution_result.fetchone()
         await self._session.commit()
         return _row_to_entity(row) if row else None
