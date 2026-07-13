@@ -23,11 +23,21 @@ _CLAIM_NEXT_JOB_SQL = text(
     """
 )
 
-_CANCEL_IF_QUEUED_SQL = text(
+_CANCEL_IF_CANCELLABLE_SQL = text(
     """
     UPDATE jobs
     SET status = 'cancelled', updated_at = now(), completed_at = now()
-    WHERE id = :job_id AND user_id = :user_id AND status = 'queued'
+    WHERE id = :job_id AND user_id = :user_id AND status IN ('queued', 'running')
+    RETURNING id, user_id, job_type, status, payload, result, error_message,
+              created_at, updated_at, started_at, completed_at
+    """
+)
+
+_FAIL_IF_RUNNING_SQL = text(
+    """
+    UPDATE jobs
+    SET status = 'failed', error_message = :error_message, updated_at = now(), completed_at = now()
+    WHERE id = :job_id AND status = 'running'
     RETURNING id, user_id, job_type, status, payload, result, error_message,
               created_at, updated_at, started_at, completed_at
     """
@@ -101,7 +111,7 @@ class SqlAlchemyJobRepository:
 
     async def cancel(self, job_id: uuid.UUID, user_id: uuid.UUID) -> Job | None:
         result = await self._session.execute(
-            _CANCEL_IF_QUEUED_SQL, {"job_id": job_id, "user_id": user_id}
+            _CANCEL_IF_CANCELLABLE_SQL, {"job_id": job_id, "user_id": user_id}
         )
         row = result.fetchone()
         await self._session.flush()
@@ -109,6 +119,16 @@ class SqlAlchemyJobRepository:
 
     async def claim_next_job(self) -> Job | None:
         result = await self._session.execute(_CLAIM_NEXT_JOB_SQL)
+        row = result.fetchone()
+        await self._session.commit()
+        return _row_to_entity(row) if row else None
+
+    async def fail(self, job_id: uuid.UUID, error_message: str) -> Job | None:
+        # Self-commits like claim_next_job(): only ever called from the standalone
+        # WorkerManager process, which has no HTTP request boundary to commit at the end of.
+        result = await self._session.execute(
+            _FAIL_IF_RUNNING_SQL, {"job_id": job_id, "error_message": error_message}
+        )
         row = result.fetchone()
         await self._session.commit()
         return _row_to_entity(row) if row else None

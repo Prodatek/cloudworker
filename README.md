@@ -6,11 +6,11 @@ automatically tears the workers down when the job finishes.
 
 ## Status
 
-**Phase 3 of 8 (AWS Infrastructure via Terraform)** — see
-[`docs/architecture.md`](docs/architecture.md) for the full roadmap, and
-[`docs/phase-1.md`](docs/phase-1.md)/[`docs/phase-2.md`](docs/phase-2.md)/[`docs/phase-3.md`](docs/phase-3.md)
-for what shipped in each phase. Phase 3 is IaC only — it has not yet been applied to a real AWS
-account (see `docs/phase-3.md` for why).
+**Phase 4 of 8 (Worker Manager)** — see [`docs/architecture.md`](docs/architecture.md) for the
+full roadmap, and `docs/phase-1.md` through `docs/phase-4.md` for what shipped in each phase.
+Phase 3's AWS infra is IaC only (not yet applied to a real account), so Phase 4's worker
+provisioning is only proven via `moto`-mocked tests in this environment — see
+[`docs/phase-4.md`](docs/phase-4.md) for what that does and doesn't prove.
 
 ## Quickstart
 
@@ -30,6 +30,10 @@ once (or after pulling new migrations) — it creates the `users`/`api_keys`/`jo
 - Prometheus metrics: `GET /metrics`
 - Register: `POST /api/v1/auth/register`
 - Jobs: `POST/GET /api/v1/jobs`, `GET/POST /api/v1/jobs/{id}[/cancel]` (require an API key)
+
+To also run the Worker Manager locally: `docker compose up worker` (or it starts with the rest
+of the stack via `docker compose up`). It's inert without `LAUNCH_TEMPLATE_ID`/`WORKER_SUBNET_IDS`
+set to real values from an applied Phase 3 (`backend/.env.example` documents the variables).
 
 See [`docs/api-examples.md`](docs/api-examples.md) for example `curl` calls.
 
@@ -73,8 +77,8 @@ docker-compose.yml             Local dev: Postgres + API
 
 1. **Foundations** *(shipped)* — FastAPI skeleton, Postgres wiring, Docker Compose, CI, health/metrics, OpenAPI docs
 2. **Authentication + Job Domain + Queue** *(shipped)* — API key auth, `users`/`jobs` tables, Postgres-backed job queue, CRUD API
-3. **AWS Infrastructure via Terraform** *(this phase, IaC only)* — VPC (private-only, SSM/S3 VPC endpoints), IAM/SSM role, S3 buckets, EC2 launch template
-4. Worker Manager (provision/terminate EC2 workers, lifecycle state machine)
+3. **AWS Infrastructure via Terraform** *(shipped, IaC only)* — VPC (private-only, SSM/S3 VPC endpoints), IAM/SSM role, S3 buckets, EC2 launch template
+4. **Worker Manager** *(this phase)* — provisions/terminates EC2 workers, lifecycle state machine, `moto`-tested
 5. Shell job execution over SSM + log streaming to S3
 6. Playwright browser-automation jobs + Artifact Service
 7. React + TypeScript dashboard

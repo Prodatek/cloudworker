@@ -85,8 +85,10 @@ HTTP/1.1 201 Created
 }
 ```
 
-Nothing executes this job yet — the Worker Manager that claims and runs queued jobs ships in
-Phase 4/5.
+Once a Worker Manager process is running (Phase 4; see `docker-compose.yml`'s `worker` service)
+and pointed at a real, Terraform-applied AWS account, this job is picked up automatically: its
+status moves to `running` and an EC2 worker is provisioned for it. Actually executing the job's
+command on that worker ships in Phase 5.
 
 ## List / get / cancel a job
 
@@ -99,7 +101,9 @@ curl -X POST -H "Authorization: Bearer $API_KEY" \
   http://localhost:8000/api/v1/jobs/3fa5c2e1-.../cancel
 ```
 
-- Cancelling a job that isn't `queued` anymore (already cancelled/completed) → `409 Conflict`.
+- A job can be cancelled while `queued` **or** `running` — cancelling a `running` job also
+  terminates the EC2 worker that was provisioned for it (Phase 4).
+- Cancelling a job that's already `cancelled`/`succeeded`/`failed` → `409 Conflict`.
 - Fetching a job that doesn't exist, or belongs to another user → `404 Not Found`.
 - Any `/api/v1/jobs*` call without a valid `Authorization: Bearer <key>` header → `401 Unauthorized`.
 

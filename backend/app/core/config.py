@@ -20,6 +20,19 @@ class Settings(BaseSettings):
     database_pool_size: int = 5
     database_pool_timeout_seconds: int = 5
 
+    aws_region: str = "us-east-1"
+    launch_template_id: str = ""
+    # Comma-separated private subnet ids (from Phase 3's networking module outputs). Kept as a
+    # plain string rather than list[str] to avoid fighting pydantic-settings' env-var parsing
+    # for complex types; split via worker_subnet_id_list below.
+    worker_subnet_ids: str = ""
+    ssm_ready_timeout_seconds: float = 120.0
+    worker_poll_interval_seconds: float = 5.0
+
+    @property
+    def worker_subnet_id_list(self) -> list[str]:
+        return [s.strip() for s in self.worker_subnet_ids.split(",") if s.strip()]
+
 
 @lru_cache
 def get_settings() -> Settings:

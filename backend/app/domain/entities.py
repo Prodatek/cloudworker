@@ -59,4 +59,28 @@ class Job:
 
     @property
     def is_cancellable(self) -> bool:
-        return self.status == JobStatus.QUEUED
+        # A job can be cancelled while queued, or while its worker is still being
+        # provisioned (running) — cancelling at that point also tears down the worker.
+        return self.status in (JobStatus.QUEUED, JobStatus.RUNNING)
+
+
+class WorkerStatus(StrEnum):
+    PENDING = "pending"
+    PROVISIONING = "provisioning"
+    READY = "ready"
+    TERMINATING = "terminating"
+    TERMINATED = "terminated"
+    FAILED = "failed"
+
+
+@dataclass
+class Worker:
+    id: uuid.UUID
+    job_id: uuid.UUID
+    status: WorkerStatus
+    created_at: datetime
+    updated_at: datetime
+    instance_id: str | None = None
+    failure_reason: str | None = None
+    ready_at: datetime | None = None
+    terminated_at: datetime | None = None

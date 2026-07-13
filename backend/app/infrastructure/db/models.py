@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import uuid
 from datetime import datetime
 
@@ -18,8 +20,8 @@ class UserModel(Base):
     hashed_password: Mapped[str]
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
 
-    api_keys: Mapped[list["ApiKeyModel"]] = relationship(back_populates="user")
-    jobs: Mapped[list["JobModel"]] = relationship(back_populates="user")
+    api_keys: Mapped[list[ApiKeyModel]] = relationship(back_populates="user")
+    jobs: Mapped[list[JobModel]] = relationship(back_populates="user")
 
 
 class ApiKeyModel(Base):
@@ -35,7 +37,7 @@ class ApiKeyModel(Base):
     last_used_at: Mapped[datetime | None] = mapped_column(default=None)
     revoked_at: Mapped[datetime | None] = mapped_column(default=None)
 
-    user: Mapped["UserModel"] = relationship(back_populates="api_keys")
+    user: Mapped[UserModel] = relationship(back_populates="api_keys")
 
 
 class JobModel(Base):
@@ -56,4 +58,21 @@ class JobModel(Base):
     started_at: Mapped[datetime | None] = mapped_column(default=None)
     completed_at: Mapped[datetime | None] = mapped_column(default=None)
 
-    user: Mapped["UserModel"] = relationship(back_populates="jobs")
+    user: Mapped[UserModel] = relationship(back_populates="jobs")
+    worker: Mapped[WorkerModel | None] = relationship(back_populates="job")
+
+
+class WorkerModel(Base):
+    __tablename__ = "workers"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    job_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("jobs.id"), index=True)
+    instance_id: Mapped[str | None] = mapped_column(default=None)
+    status: Mapped[str] = mapped_column(index=True)
+    failure_reason: Mapped[str | None] = mapped_column(default=None)
+    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(server_default=func.now(), onupdate=func.now())
+    ready_at: Mapped[datetime | None] = mapped_column(default=None)
+    terminated_at: Mapped[datetime | None] = mapped_column(default=None)
+
+    job: Mapped[JobModel] = relationship(back_populates="worker")

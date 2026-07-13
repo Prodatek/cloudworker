@@ -1,7 +1,7 @@
 import uuid
 from typing import Protocol
 
-from app.domain.entities import ApiKey, Job, User
+from app.domain.entities import ApiKey, Job, User, Worker
 
 
 class UserRepository(Protocol):
@@ -26,10 +26,11 @@ class JobRepository(Protocol):
     async def list_for_user(self, user_id: uuid.UUID, limit: int, offset: int) -> list[Job]: ...
 
     async def cancel(self, job_id: uuid.UUID, user_id: uuid.UUID) -> Job | None:
-        """Cancels the job if it belongs to the user and is still queued.
+        """Cancels the job if it belongs to the user and is still queued or running.
 
-        Returns None if the job doesn't exist / isn't owned by the user; the caller
-        distinguishes "not found" from "not cancellable" by re-fetching if needed.
+        Returns None if the job doesn't exist / isn't owned by the user, or isn't in a
+        cancellable state; the caller distinguishes "not found" from "not cancellable"
+        by re-fetching if needed.
         """
         ...
 
@@ -40,3 +41,25 @@ class JobRepository(Protocol):
         exactly one caller.
         """
         ...
+
+    async def fail(self, job_id: uuid.UUID, error_message: str) -> Job | None:
+        """Atomically transitions a running job to failed. Returns None if the job
+        wasn't running (e.g. already cancelled/completed by someone else).
+        """
+        ...
+
+
+class WorkerRepository(Protocol):
+    async def create(self, job_id: uuid.UUID) -> Worker: ...
+
+    async def get_by_job_id(self, job_id: uuid.UUID) -> Worker | None: ...
+
+    async def mark_provisioning(self, worker_id: uuid.UUID, instance_id: str) -> Worker: ...
+
+    async def mark_ready(self, worker_id: uuid.UUID) -> Worker: ...
+
+    async def mark_terminating(self, worker_id: uuid.UUID) -> Worker: ...
+
+    async def mark_terminated(self, worker_id: uuid.UUID) -> Worker: ...
+
+    async def mark_failed(self, worker_id: uuid.UUID, failure_reason: str) -> Worker: ...

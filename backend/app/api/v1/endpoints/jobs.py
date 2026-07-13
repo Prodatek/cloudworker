@@ -1,11 +1,15 @@
+import logging
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 
-from app.api.v1.deps import get_current_user, get_job_repository
+from app.api.v1.deps import get_current_user, get_job_repository, get_worker_manager
 from app.api.v1.schemas.job import JobCreateRequest, JobListResponse, JobResponse
-from app.domain.entities import User
+from app.domain.entities import JobStatus, User
 from app.infrastructure.db.job_repository import SqlAlchemyJobRepository
+from app.services.worker_manager import WorkerManager
+
+logger = logging.getLogger("cloudworker.jobs")
 
 router = APIRouter(prefix="/jobs", tags=["jobs"])
 
@@ -50,6 +54,7 @@ async def cancel_job(
     job_id: uuid.UUID,
     current_user: User = Depends(get_current_user),
     job_repository: SqlAlchemyJobRepository = Depends(get_job_repository),
+    worker_manager: WorkerManager | None = Depends(get_worker_manager),
 ) -> JobResponse:
     existing = await job_repository.get_by_id_for_user(job_id, current_user.id)
     if existing is None:
@@ -61,4 +66,15 @@ async def cancel_job(
             status_code=status.HTTP_409_CONFLICT,
             detail=f"Job cannot be cancelled from status '{existing.status.value}'",
         )
+
+    if existing.status == JobStatus.RUNNING:
+        if worker_manager is not None:
+            await worker_manager.cancel_job_worker(job_id)
+        else:
+            logger.warning(
+                "Cancelled running job %s but worker provisioning isn't configured; "
+                "any worker it launched was not terminated",
+                job_id,
+            )
+
     return JobResponse.from_entity(cancelled)

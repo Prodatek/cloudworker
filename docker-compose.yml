@@ -31,5 +31,23 @@ services:
       db:
         condition: service_healthy
 
+  # Polls the job queue and provisions/terminates EC2 workers. Does nothing useful until
+  # LAUNCH_TEMPLATE_ID/WORKER_SUBNET_IDS point at a real, Terraform-applied AWS account
+  # (see infra/terraform/) and real AWS credentials are supplied — included here for local
+  # completeness, not a claim that it's production-ready out of the box.
+  worker:
+    build:
+      context: ./backend
+    env_file:
+      - ./backend/.env.example
+    environment:
+      DATABASE_URL: postgresql+asyncpg://cloudworker:cloudworker@db:5432/cloudworker
+    volumes:
+      - ./backend/app:/srv/app/app
+    command: ["python", "-m", "app.worker_entrypoint"]
+    depends_on:
+      db:
+        condition: service_healthy
+
 volumes:
   cloudworker-db-data:

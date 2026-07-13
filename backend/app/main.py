@@ -9,6 +9,7 @@ from app.api.v1.router import api_router
 from app.core.config import get_settings
 from app.core.logging import configure_logging
 from app.core.middleware import RequestContextMiddleware
+from app.infrastructure.aws.ec2_worker_provisioner import EC2WorkerProvisioner
 from app.infrastructure.database import create_engine, create_session_factory
 from app.infrastructure.metrics import PrometheusMiddleware, render_metrics
 
@@ -21,6 +22,18 @@ def create_app() -> FastAPI:
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         app.state.db_engine = create_engine(settings)
         app.state.db_session_factory = create_session_factory(app.state.db_engine)
+
+        # None until Phase 3's Terraform is actually applied and these are configured —
+        # get_worker_manager (api/v1/deps.py) returns 503 rather than crashing the API
+        # process when a caller needs it and it's unset.
+        app.state.worker_provisioner = None
+        if settings.launch_template_id and settings.worker_subnet_id_list:
+            app.state.worker_provisioner = EC2WorkerProvisioner(
+                region=settings.aws_region,
+                launch_template_id=settings.launch_template_id,
+                subnet_ids=settings.worker_subnet_id_list,
+            )
+
         yield
         await app.state.db_engine.dispose()
 
