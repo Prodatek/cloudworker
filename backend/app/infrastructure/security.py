@@ -1,10 +1,17 @@
 import hashlib
 import secrets
+import uuid
+from datetime import UTC, datetime, timedelta
 
 import bcrypt
+import jwt
 
 _API_KEY_PREFIX = "cw_live_"
 _API_KEY_DISPLAY_PREFIX_LENGTH = 12
+
+
+class InvalidAccessTokenError(Exception):
+    """Raised when a JWT is malformed, unsigned by us, or expired."""
 
 
 def hash_password(plain_password: str) -> str:
@@ -29,3 +36,30 @@ def hash_api_key(api_key: str) -> str:
 
 def api_key_display_prefix(api_key: str) -> str:
     return api_key[:_API_KEY_DISPLAY_PREFIX_LENGTH]
+
+
+def looks_like_api_key(token: str) -> bool:
+    """Distinguishes an API key from a JWT in a shared Authorization: Bearer header —
+    API keys always carry this prefix (see generate_api_key); JWTs never do.
+    """
+    return token.startswith(_API_KEY_PREFIX)
+
+
+def create_access_token(
+    user_id: uuid.UUID, secret_key: str, algorithm: str, expiry_minutes: int
+) -> str:
+    now = datetime.now(UTC)
+    payload = {
+        "sub": str(user_id),
+        "iat": now,
+        "exp": now + timedelta(minutes=expiry_minutes),
+    }
+    return jwt.encode(payload, secret_key, algorithm=algorithm)
+
+
+def decode_access_token(token: str, secret_key: str, algorithm: str) -> uuid.UUID:
+    try:
+        payload = jwt.decode(token, secret_key, algorithms=[algorithm])
+        return uuid.UUID(payload["sub"])
+    except (jwt.PyJWTError, ValueError, KeyError) as exc:
+        raise InvalidAccessTokenError("Invalid or expired access token") from exc

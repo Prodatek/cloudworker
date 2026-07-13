@@ -1,0 +1,190 @@
+:root {
+  color-scheme: light dark;
+  --color-bg: #0f1115;
+  --color-surface: #171a21;
+  --color-border: #2a2e38;
+  --color-text: #e6e8eb;
+  --color-text-muted: #9aa1ac;
+  --color-accent: #5b8def;
+  --color-danger: #e5534b;
+  --color-success: #3fb950;
+  --radius: 8px;
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+
+@media (prefers-color-scheme: light) {
+  :root {
+    --color-bg: #f7f8fa;
+    --color-surface: #ffffff;
+    --color-border: #dfe2e7;
+    --color-text: #1a1d23;
+    --color-text-muted: #5b616e;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--color-bg);
+  color: var(--color-text);
+}
+
+a {
+  color: var(--color-accent);
+}
+
+.app-shell {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 1.5rem;
+}
+
+.app-nav {
+  display: flex;
+  align-items: center;
+  gap: 1.25rem;
+  margin-bottom: 2rem;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.app-nav a {
+  color: var(--color-text-muted);
+  text-decoration: none;
+  font-size: 0.9rem;
+}
+
+.app-nav a.active,
+.app-nav a:hover {
+  color: var(--color-text);
+}
+
+.app-nav .brand {
+  font-weight: 600;
+  color: var(--color-text);
+  margin-right: auto;
+}
+
+.card {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  padding: 1.25rem;
+  margin-bottom: 1rem;
+}
+
+.form-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  margin-bottom: 1rem;
+}
+
+.form-field label {
+  font-size: 0.85rem;
+  color: var(--color-text-muted);
+}
+
+input,
+select,
+textarea {
+  background: var(--color-bg);
+  color: var(--color-text);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  padding: 0.5rem 0.65rem;
+  font-size: 0.95rem;
+  font-family: inherit;
+}
+
+textarea {
+  min-height: 8rem;
+  font-family: ui-monospace, monospace;
+  resize: vertical;
+}
+
+button {
+  background: var(--color-accent);
+  color: white;
+  border: none;
+  border-radius: var(--radius);
+  padding: 0.55rem 1rem;
+  font-size: 0.95rem;
+  cursor: pointer;
+}
+
+button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+button.secondary {
+  background: transparent;
+  color: var(--color-text);
+  border: 1px solid var(--color-border);
+}
+
+button.danger {
+  background: var(--color-danger);
+}
+
+.error-text {
+  color: var(--color-danger);
+  font-size: 0.9rem;
+}
+
+.muted {
+  color: var(--color-text-muted);
+  font-size: 0.85rem;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+th,
+td {
+  text-align: left;
+  padding: 0.5rem 0.6rem;
+  border-bottom: 1px solid var(--color-border);
+  font-size: 0.9rem;
+}
+
+th {
+  color: var(--color-text-muted);
+  font-weight: 500;
+}
+
+.status-badge {
+  display: inline-block;
+  padding: 0.15rem 0.55rem;
+  border-radius: 999px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  text-transform: capitalize;
+}
+
+.status-badge.queued {
+  background: #3a3f4b;
+  color: #c7cbd4;
+}
+.status-badge.running {
+  background: #2a4d7a;
+  color: #9cc4f2;
+}
+.status-badge.succeeded {
+  background: #1f4d2c;
+  color: #7fd99a;
+}
+.status-badge.failed {
+  background: #4d2323;
+  color: #f0a3a0;
+}
+.status-badge.cancelled {
+  background: #3a3f4b;
+  color: #c7cbd4;
+}

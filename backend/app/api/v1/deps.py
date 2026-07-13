@@ -11,7 +11,12 @@ from app.infrastructure.db.api_key_repository import SqlAlchemyApiKeyRepository
 from app.infrastructure.db.job_repository import SqlAlchemyJobRepository
 from app.infrastructure.db.user_repository import SqlAlchemyUserRepository
 from app.infrastructure.db.worker_repository import SqlAlchemyWorkerRepository
-from app.infrastructure.security import hash_api_key
+from app.infrastructure.security import (
+    InvalidAccessTokenError,
+    decode_access_token,
+    hash_api_key,
+    looks_like_api_key,
+)
 from app.services.worker_manager import WorkerManager
 
 
@@ -73,6 +78,10 @@ async def get_current_user(
     api_key_repository: SqlAlchemyApiKeyRepository = Depends(get_api_key_repository),
     user_repository: SqlAlchemyUserRepository = Depends(get_user_repository),
 ) -> User:
+    """Accepts either an API key or a JWT (from POST /api/v1/auth/login) in the same
+    Authorization: Bearer header — dispatched by the cw_live_ prefix API keys carry, so
+    the dashboard authenticates through the exact same dependency every API client does.
+    """
     authorization = request.headers.get("Authorization")
     if not authorization or not authorization.startswith("Bearer "):
         raise HTTPException(
@@ -80,13 +89,26 @@ async def get_current_user(
             detail="Missing or malformed Authorization header",
         )
 
-    api_key = authorization.removeprefix("Bearer ").strip()
-    key_record = await api_key_repository.get_by_hashed_key(hash_api_key(api_key))
-    if key_record is None or key_record.is_revoked:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid API key")
+    token = authorization.removeprefix("Bearer ").strip()
 
-    user = await user_repository.get_by_id(key_record.user_id)
+    if looks_like_api_key(token):
+        key_record = await api_key_repository.get_by_hashed_key(hash_api_key(token))
+        if key_record is None or key_record.is_revoked:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid API key")
+        user_id = key_record.user_id
+    else:
+        settings = get_settings()
+        try:
+            user_id = decode_access_token(
+                token, secret_key=settings.jwt_secret_key, algorithm=settings.jwt_algorithm
+            )
+        except InvalidAccessTokenError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid or expired token"
+            ) from exc
+
+    user = await user_repository.get_by_id(user_id)
     if user is None:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid API key")
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
 
     return user

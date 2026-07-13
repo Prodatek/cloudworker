@@ -65,8 +65,18 @@ client -> PrometheusMiddleware -> RequestContextMiddleware -> FastAPI router -> 
   presigned GET URLs, exposed via `GET /api/v1/jobs/{id}/artifacts`. Presigned URL generation is
   pure local signing — no AWS call — which made it possible to get real test coverage of this
   piece without moto or credentials, unlike almost everything else touching AWS in this project.
-- **Authentication** — API keys or JWT for programmatic access (Phase 2).
-- **Dashboard** — React + TypeScript frontend (Phase 7).
+- **Authentication** *(API keys shipped Phase 2, JWT login shipped Phase 7)* —
+  `get_current_user` (`app/api/v1/deps.py`) accepts either an API key or a JWT through the same
+  `Authorization: Bearer` header, dispatched by the `cw_live_` prefix API keys carry. API clients
+  use keys (`POST /api/v1/auth/register`, managed via `GET/POST /api/v1/api-keys`,
+  `POST /api/v1/api-keys/{id}/revoke`); the dashboard uses password login
+  (`POST /api/v1/auth/login`) issuing a JWT — both converge on the same `User`, so every endpoint
+  is authenticated identically regardless of which credential a caller used.
+- **Dashboard** *(shipped Phase 7)* — `frontend/`: React + TypeScript (Vite), typed against the
+  backend's OpenAPI schema (`openapi-typescript` + `openapi-fetch`, `frontend/src/api/`) so a
+  contract change breaks the frontend build instead of drifting silently. Login/register, job
+  submission (shell + browser), status polling, and artifact download via the presigned URLs
+  Phase 6's Artifact Service produces.
 
 ## 8-Phase Roadmap
 
@@ -76,7 +86,7 @@ client -> PrometheusMiddleware -> RequestContextMiddleware -> FastAPI router -> 
 4. **Worker Manager** *(shipped)* — boto3-driven EC2 provisioning/termination, worker lifecycle state machine, queue consumer.
 5. **Shell Execution** *(shipped)* — SSM SendCommand for shell jobs, full output to S3 (SSM-native), concurrent job processing, cancellation/timeouts.
 6. **Browser Automation** *(shipped)* — Playwright jobs (one universal AMI via Packer), screenshot/video capture, Artifact Service, presigned URL downloads.
-7. **Dashboard** — React + TypeScript UI: submit jobs, tail logs live, browse artifacts.
+7. **Dashboard** *(shipped)* — React + TypeScript UI: login, submit jobs, poll status, browse artifacts, manage API keys.
 8. **Hardening & Beta** — metrics dashboards, guaranteed cleanup (idle/orphan reaper), CD pipeline, security review, install docs.
 
 ## Why Postgres for the job queue (not SQS/Redis)

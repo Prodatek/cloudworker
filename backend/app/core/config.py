@@ -37,9 +37,22 @@ class Settings(BaseSettings):
     max_concurrent_jobs: int = 5
     artifact_url_expiry_seconds: int = 900
 
+    # SECURITY: jwt_secret_key defaults to an insecure placeholder for local dev only —
+    # every deployment beyond a laptop MUST override this via the JWT_SECRET_KEY env var.
+    jwt_secret_key: str = "dev-insecure-secret-change-me"
+    jwt_algorithm: str = "HS256"
+    jwt_access_token_expiry_minutes: int = 60
+
+    # Comma-separated allowed browser origins for CORS (the dashboard's dev server by default).
+    cors_allowed_origins: str = "http://localhost:5173"
+
     @property
     def worker_subnet_id_list(self) -> list[str]:
         return [s.strip() for s in self.worker_subnet_ids.split(",") if s.strip()]
+
+    @property
+    def cors_allowed_origin_list(self) -> list[str]:
+        return [s.strip() for s in self.cors_allowed_origins.split(",") if s.strip()]
 
 
 @lru_cache

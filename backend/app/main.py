@@ -2,6 +2,7 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response
 
 from app.api.v1.endpoints import health
@@ -60,6 +61,13 @@ def create_app() -> FastAPI:
 
     app.add_middleware(PrometheusMiddleware)
     app.add_middleware(RequestContextMiddleware)
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=settings.cors_allowed_origin_list,
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
 
     # Ops endpoints stay unversioned at the root, since load balancer/orchestrator
     # health checks are configured against a fixed path regardless of API version.

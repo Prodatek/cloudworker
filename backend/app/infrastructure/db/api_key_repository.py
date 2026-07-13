@@ -1,4 +1,5 @@
 import uuid
+from datetime import UTC, datetime
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -36,3 +37,23 @@ class SqlAlchemyApiKeyRepository:
         )
         model = result.scalar_one_or_none()
         return _to_entity(model) if model else None
+
+    async def list_for_user(self, user_id: uuid.UUID) -> list[ApiKey]:
+        result = await self._session.execute(
+            select(ApiKeyModel)
+            .where(ApiKeyModel.user_id == user_id)
+            .order_by(ApiKeyModel.created_at.desc())
+        )
+        return [_to_entity(model) for model in result.scalars().all()]
+
+    async def revoke(self, api_key_id: uuid.UUID, user_id: uuid.UUID) -> ApiKey | None:
+        result = await self._session.execute(
+            select(ApiKeyModel).where(ApiKeyModel.id == api_key_id, ApiKeyModel.user_id == user_id)
+        )
+        model = result.scalar_one_or_none()
+        if model is None or model.revoked_at is not None:
+            return None
+        model.revoked_at = datetime.now(UTC)
+        await self._session.flush()
+        await self._session.refresh(model)
+        return _to_entity(model)

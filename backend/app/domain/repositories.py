@@ -20,6 +20,15 @@ class ApiKeyRepository(Protocol):
 
     async def get_by_hashed_key(self, hashed_key: str) -> ApiKey | None: ...
 
+    async def list_for_user(self, user_id: uuid.UUID) -> list[ApiKey]: ...
+
+    async def revoke(self, api_key_id: uuid.UUID, user_id: uuid.UUID) -> ApiKey | None:
+        """Revokes the key if it belongs to the user and isn't already revoked.
+
+        Returns None if it doesn't exist / isn't owned by the user / is already revoked.
+        """
+        ...
+
 
 class JobRepository(Protocol):
     async def create(self, user_id: uuid.UUID, job_type: str, payload: dict) -> Job: ...

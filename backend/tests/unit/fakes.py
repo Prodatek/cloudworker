@@ -5,10 +5,70 @@ from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 
 from app.domain.artifact_store import ArtifactRef
-from app.domain.entities import Job, JobStatus, JobType, Worker, WorkerStatus
+from app.domain.entities import ApiKey, Job, JobStatus, JobType, User, Worker, WorkerStatus
 from app.domain.job_executor import JobExecutionResult
 from app.domain.repositories import RepositoryBundle
 from app.domain.worker_provisioner import ProvisioningError
+
+
+class FakeUserRepository:
+    """In-memory UserRepository for testing auth endpoints without a real database."""
+
+    def __init__(self) -> None:
+        self.users: dict[uuid.UUID, User] = {}
+
+    def seed_user(self, email: str, hashed_password: str) -> User:
+        now = datetime.now(UTC)
+        user = User(id=uuid.uuid4(), email=email, hashed_password=hashed_password, created_at=now)
+        self.users[user.id] = user
+        return user
+
+    async def create(self, email: str, hashed_password: str) -> User:
+        return self.seed_user(email, hashed_password)
+
+    async def get_by_email(self, email: str) -> User | None:
+        for user in self.users.values():
+            if user.email == email:
+                return user
+        return None
+
+    async def get_by_id(self, user_id: uuid.UUID) -> User | None:
+        return self.users.get(user_id)
+
+
+class FakeApiKeyRepository:
+    """In-memory ApiKeyRepository for testing auth endpoints without a real database."""
+
+    def __init__(self) -> None:
+        self.keys: dict[uuid.UUID, ApiKey] = {}
+
+    async def create(self, user_id: uuid.UUID, hashed_key: str, prefix: str) -> ApiKey:
+        now = datetime.now(UTC)
+        key = ApiKey(
+            id=uuid.uuid4(), user_id=user_id, hashed_key=hashed_key, prefix=prefix, created_at=now
+        )
+        self.keys[key.id] = key
+        return key
+
+    async def get_by_hashed_key(self, hashed_key: str) -> ApiKey | None:
+        for key in self.keys.values():
+            if key.hashed_key == hashed_key:
+                return key
+        return None
+
+    async def list_for_user(self, user_id: uuid.UUID) -> list[ApiKey]:
+        return sorted(
+            (key for key in self.keys.values() if key.user_id == user_id),
+            key=lambda key: key.created_at,
+            reverse=True,
+        )
+
+    async def revoke(self, api_key_id: uuid.UUID, user_id: uuid.UUID) -> ApiKey | None:
+        key = self.keys.get(api_key_id)
+        if key is None or key.user_id != user_id or key.revoked_at is not None:
+            return None
+        key.revoked_at = datetime.now(UTC)
+        return key
 
 
 class FakeJobRepository:

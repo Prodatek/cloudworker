@@ -8,3 +8,4 @@ prometheus-client==0.21.1
 alembic==1.14.0
 bcrypt==4.2.1
 boto3==1.35.90
+pyjwt==2.10.1

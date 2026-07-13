@@ -58,6 +58,44 @@ HTTP/1.1 201 Created
 
 Registering the same email twice returns `409 Conflict`.
 
+## Log in (dashboard auth — returns a JWT, not an API key)
+
+```bash
+curl -i -X POST http://localhost:8000/api/v1/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"email": "alice@example.com", "password": "correct horse battery staple"}'
+```
+
+```json
+HTTP/1.1 200 OK
+{
+  "access_token": "eyJhbGciOiJIUzI1NiIs...",
+  "token_type": "bearer",
+  "user_id": "b6a1c9de-...",
+  "email": "alice@example.com"
+}
+```
+
+The `access_token` works as an `Authorization: Bearer <token>` header on every endpoint an API
+key does — `get_current_user` accepts either, telling them apart by the `cw_live_` prefix API
+keys always carry. Wrong password or unknown email both return the same generic `401` (doesn't
+reveal which). This is what the dashboard (`frontend/`) uses; API clients keep using API keys.
+
+## Manage API keys (requires being logged in, via either credential type)
+
+```bash
+curl -H "Authorization: Bearer $TOKEN" http://localhost:8000/api/v1/api-keys
+
+curl -X POST -H "Authorization: Bearer $TOKEN" http://localhost:8000/api/v1/api-keys
+
+curl -X POST -H "Authorization: Bearer $TOKEN" \
+  http://localhost:8000/api/v1/api-keys/<id>/revoke
+```
+
+`POST /api/v1/api-keys` returns the new key's full value once (same one-time-reveal pattern as
+registration); `GET`/list only ever returns the `prefix`. A revoked key immediately stops
+authenticating; revoking one key never affects a user's other keys.
+
 ## Create a job
 
 ```bash
@@ -201,3 +239,9 @@ curl -X POST -H "Authorization: Bearer $API_KEY" \
 - Swagger UI: <http://localhost:8000/docs>
 - ReDoc: <http://localhost:8000/redoc>
 - Raw OpenAPI schema: <http://localhost:8000/openapi.json>
+
+## Dashboard
+
+`frontend/` (React + TypeScript, `docker compose up frontend` or `npm run dev`) is a UI over
+everything above — log in, submit shell/browser jobs, poll status, download artifacts, manage API
+keys. See `frontend/README.md`.

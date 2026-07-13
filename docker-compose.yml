@@ -49,5 +49,17 @@ services:
       db:
         condition: service_healthy
 
+  frontend:
+    build:
+      context: ./frontend
+    environment:
+      VITE_API_BASE_URL: http://localhost:8000
+    ports:
+      - "5173:5173"
+    volumes:
+      - ./frontend/src:/srv/app/src
+    depends_on:
+      - api
+
 volumes:
   cloudworker-db-data:
