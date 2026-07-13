@@ -1,4 +1,5 @@
 import os
+import uuid
 
 import pytest
 
@@ -22,3 +23,20 @@ async def client():
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url="http://test") as ac:
             yield ac
+
+
+@pytest.fixture
+def unique_email() -> str:
+    return f"test-{uuid.uuid4()}@example.com"
+
+
+async def register_user(client, email: str, password: str = "correct horse battery staple"):
+    response = await client.post(
+        "/api/v1/auth/register", json={"email": email, "password": password}
+    )
+    assert response.status_code == 201, response.text
+    return response.json()
+
+
+def auth_headers(api_key: str) -> dict[str, str]:
+    return {"Authorization": f"Bearer {api_key}"}

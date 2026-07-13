@@ -39,6 +39,70 @@ cloudworker_http_requests_total{method="GET",path="/healthz",status_code="200"} 
 ...
 ```
 
+## Register a user (returns an API key — shown only once)
+
+```bash
+curl -i -X POST http://localhost:8000/api/v1/auth/register \
+  -H "Content-Type: application/json" \
+  -d '{"email": "alice@example.com", "password": "correct horse battery staple"}'
+```
+
+```json
+HTTP/1.1 201 Created
+{
+  "user_id": "b6a1c9de-...",
+  "email": "alice@example.com",
+  "api_key": "cw_live_9pQ2z...=="
+}
+```
+
+Registering the same email twice returns `409 Conflict`.
+
+## Create a job
+
+```bash
+export API_KEY=cw_live_9pQ2z...==
+
+curl -i -X POST http://localhost:8000/api/v1/jobs \
+  -H "Authorization: Bearer $API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"job_type": "shell", "payload": {"command": "echo hi"}}'
+```
+
+```json
+HTTP/1.1 201 Created
+{
+  "id": "3fa5c2e1-...",
+  "job_type": "shell",
+  "status": "queued",
+  "payload": {"command": "echo hi"},
+  "result": null,
+  "error_message": null,
+  "created_at": "2026-07-13T12:00:00Z",
+  "updated_at": "2026-07-13T12:00:00Z",
+  "started_at": null,
+  "completed_at": null
+}
+```
+
+Nothing executes this job yet — the Worker Manager that claims and runs queued jobs ships in
+Phase 4/5.
+
+## List / get / cancel a job
+
+```bash
+curl -H "Authorization: Bearer $API_KEY" http://localhost:8000/api/v1/jobs
+
+curl -H "Authorization: Bearer $API_KEY" http://localhost:8000/api/v1/jobs/3fa5c2e1-...
+
+curl -X POST -H "Authorization: Bearer $API_KEY" \
+  http://localhost:8000/api/v1/jobs/3fa5c2e1-.../cancel
+```
+
+- Cancelling a job that isn't `queued` anymore (already cancelled/completed) → `409 Conflict`.
+- Fetching a job that doesn't exist, or belongs to another user → `404 Not Found`.
+- Any `/api/v1/jobs*` call without a valid `Authorization: Bearer <key>` header → `401 Unauthorized`.
+
 ## Interactive docs
 
 - Swagger UI: <http://localhost:8000/docs>

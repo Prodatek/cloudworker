@@ -37,5 +37,11 @@ async def check_database_connection(engine: AsyncEngine) -> bool:
 async def get_db_session(
     session_factory: async_sessionmaker[AsyncSession],
 ) -> AsyncGenerator[AsyncSession, None]:
+    """Yields a session scoped to one request: commits on success, rolls back on error."""
     async with session_factory() as session:
-        yield session
+        try:
+            yield session
+            await session.commit()
+        except Exception:
+            await session.rollback()
+            raise
