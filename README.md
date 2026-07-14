@@ -1,4 +1,5 @@
 # CloudWorker
+![alt text](image.png)
 
 CloudWorker provisions ephemeral Linux workers on AWS, executes shell scripts and Playwright
 browser-automation jobs on them via SSM (no SSH), streams logs, stores artifacts in S3, and
