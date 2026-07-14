@@ -18,6 +18,34 @@ REQUEST_LATENCY = Histogram(
     ["method", "path"],
 )
 
+# Incremented whenever a job reaches a terminal state (succeeded/failed/cancelled),
+# from wherever that transition happens: JobProcessor, the cancel endpoint, or WorkerReaper.
+JOBS_TOTAL = Counter(
+    "cloudworker_jobs_total",
+    "Total jobs reaching a terminal state",
+    ["job_type", "status"],
+)
+
+# Observed in WorkerManager.provision_worker() around the launch+SSM-ready wait, on both
+# success and failure — provisioning latency (and its failure rate) is a key SLO signal.
+WORKER_PROVISIONING_SECONDS = Histogram(
+    "cloudworker_worker_provisioning_seconds",
+    "Time to provision a worker and reach SSM-ready, in seconds",
+)
+
+# Observed in JobProcessor around each executor.execute() call, success or failure.
+JOB_EXECUTION_SECONDS = Histogram(
+    "cloudworker_job_execution_seconds",
+    "Job execution duration in seconds",
+    ["job_type"],
+)
+
+# Incremented by WorkerReaper for each stale worker it terminates.
+WORKERS_REAPED_TOTAL = Counter(
+    "cloudworker_workers_reaped_total",
+    "Total workers force-terminated by the reaper after being stuck in a non-terminal status",
+)
+
 
 class PrometheusMiddleware(BaseHTTPMiddleware):
     """Records request count and latency for every HTTP request."""

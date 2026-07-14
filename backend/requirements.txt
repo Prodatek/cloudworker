@@ -1,4 +1,4 @@
-fastapi==0.115.6
+fastapi==0.139.0
 uvicorn[standard]==0.32.1
 pydantic[email]==2.10.3
 pydantic-settings==2.6.1
@@ -8,4 +8,4 @@ prometheus-client==0.21.1
 alembic==1.14.0
 bcrypt==4.2.1
 boto3==1.35.90
-pyjwt==2.10.1
+pyjwt==2.13.0

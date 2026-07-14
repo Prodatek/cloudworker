@@ -10,6 +10,7 @@ from app.api.v1.router import api_router
 from app.core.config import get_settings
 from app.core.logging import configure_logging
 from app.core.middleware import RequestContextMiddleware
+from app.core.rate_limit import FixedWindowRateLimiter
 from app.infrastructure.aws.ec2_worker_provisioner import EC2WorkerProvisioner
 from app.infrastructure.aws.s3_artifact_store import S3ArtifactStore
 from app.infrastructure.database import create_engine, create_session_factory
@@ -24,6 +25,11 @@ def create_app() -> FastAPI:
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         app.state.db_engine = create_engine(settings)
         app.state.db_session_factory = create_session_factory(app.state.db_engine)
+
+        app.state.auth_rate_limiter = FixedWindowRateLimiter(
+            max_attempts=settings.auth_rate_limit_max_attempts,
+            window_seconds=settings.auth_rate_limit_window_seconds,
+        )
 
         # None until Phase 3's Terraform is actually applied and these are configured —
         # get_worker_manager (api/v1/deps.py) returns None rather than crashing the API

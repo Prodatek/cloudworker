@@ -175,6 +175,21 @@ class FakeWorkerRepository:
         worker.failure_reason = failure_reason
         return worker
 
+    async def list_stale(self, older_than_seconds: float) -> list[Worker]:
+        now = datetime.now(UTC)
+        return [
+            worker
+            for worker in self.workers.values()
+            if worker.status
+            in (
+                WorkerStatus.PENDING,
+                WorkerStatus.PROVISIONING,
+                WorkerStatus.READY,
+                WorkerStatus.TERMINATING,
+            )
+            and (now - worker.updated_at).total_seconds() > older_than_seconds
+        ]
+
 
 class FakeWorkerProvisioner:
     """Configurable fake WorkerProvisioner recording calls for assertions."""

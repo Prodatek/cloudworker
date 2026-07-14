@@ -1,0 +1,100 @@
+name: Deploy
+
+# Authored and YAML-validated, not exercised end-to-end — this repo has no GitHub remote
+# (a deliberate Phase 1 choice) and infra/terraform hasn't been applied to a real AWS
+# account (Phase 3's standing status), so neither job here has ever actually run. See
+# docs/deployment-guide.md for what a customer sets up (registry, AWS credentials, Terraform
+# backend) before this workflow can do anything for real.
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      terraform_action:
+        description: "Action to run against infra/terraform/environments/dev"
+        required: true
+        default: plan
+        type: choice
+        options:
+          - plan
+          - apply
+
+env:
+  REGISTRY: ghcr.io
+
+jobs:
+  # Builds and pushes the api/worker image (they share backend/Dockerfile, differing only
+  # in the container command docker-compose.yml already sets) and the frontend image, tagged
+  # by the pushed git tag and commit SHA. Uses GITHUB_TOKEN for GHCR auth — no extra secrets
+  # needed for this job specifically.
+  build-and-push:
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      matrix:
+        include:
+          - image: backend
+            context: ./backend
+          - image: frontend
+            context: ./frontend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: docker/metadata-action@v5
+        id: meta
+        with:
+          images: ${{ env.REGISTRY }}/${{ github.repository }}/${{ matrix.image }}
+          tags: |
+            type=semver,pattern={{version}}
+            type=sha
+
+      - uses: docker/build-push-action@v6
+        with:
+          context: ${{ matrix.context }}
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+
+  # Manual-dispatch only (never runs on a push) — a human explicitly chooses plan or apply.
+  # Needs AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY/AWS_REGION as environment secrets on a
+  # "production" GitHub Environment, which don't exist in this repo yet; until they're
+  # added, this job fails at the credentials step rather than silently no-op-ing.
+  terraform:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    environment: production
+    defaults:
+      run:
+        working-directory: infra/terraform/environments/dev
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.9.8"
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - run: terraform init
+
+      - run: terraform plan -out=tfplan
+
+      - if: github.event.inputs.terraform_action == 'apply'
+        run: terraform apply -auto-approve tfplan

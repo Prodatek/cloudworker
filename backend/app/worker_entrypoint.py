@@ -17,6 +17,7 @@ from app.infrastructure.database import create_engine, create_session_factory
 from app.infrastructure.db.job_repository import SqlAlchemyJobRepository
 from app.infrastructure.db.worker_repository import SqlAlchemyWorkerRepository
 from app.services.job_processor import JobProcessor
+from app.services.worker_reaper import WorkerReaper
 
 
 def _make_repository_factory(settings: Settings) -> tuple[AsyncEngine, RepositoryFactory]:
@@ -60,20 +61,33 @@ async def main() -> None:
         ),
     }
 
+    provisioner = EC2WorkerProvisioner(
+        region=settings.aws_region,
+        launch_template_id=settings.launch_template_id,
+        subnet_ids=settings.worker_subnet_id_list,
+    )
+
     processor = JobProcessor(
         repository_factory=repository_factory,
-        provisioner=EC2WorkerProvisioner(
-            region=settings.aws_region,
-            launch_template_id=settings.launch_template_id,
-            subnet_ids=settings.worker_subnet_id_list,
-        ),
+        provisioner=provisioner,
         executors=executors,
         ssm_ready_timeout_seconds=settings.ssm_ready_timeout_seconds,
         job_execution_timeout_seconds=settings.job_execution_timeout_seconds,
         max_concurrent_jobs=settings.max_concurrent_jobs,
     )
+    reaper = WorkerReaper(
+        repository_factory=repository_factory,
+        provisioner=provisioner,
+        stale_after_seconds=settings.worker_stale_after_seconds,
+    )
     try:
-        await processor.run_forever(settings.worker_poll_interval_seconds)
+        # One process, two independent poll loops: the reaper is a safety net that must
+        # keep running even though it's logically separate from the job-claiming loop —
+        # same single-deployable-unit reasoning the worker process already follows.
+        await asyncio.gather(
+            processor.run_forever(settings.worker_poll_interval_seconds),
+            reaper.run_forever(settings.worker_reaper_poll_interval_seconds),
+        )
     finally:
         await engine.dispose()
 

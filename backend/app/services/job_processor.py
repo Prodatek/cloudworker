@@ -1,10 +1,12 @@
 import asyncio
 import logging
+import time
 
 from app.domain.entities import Job, JobType
 from app.domain.job_executor import JobExecutor
 from app.domain.repositories import RepositoryBundle, RepositoryFactory
 from app.domain.worker_provisioner import WorkerProvisioner
+from app.infrastructure.metrics import JOB_EXECUTION_SECONDS, JOBS_TOTAL
 from app.services.worker_manager import WorkerManager
 
 logger = logging.getLogger("cloudworker.job_processor")
@@ -84,23 +86,31 @@ class JobProcessor:
         if exc is not None:
             logger.error("Unhandled exception processing job: %s", exc, exc_info=exc)
 
+    def _record_terminal(self, job: Job, terminal_job: Job | None) -> None:
+        # Only counts if the transition actually happened (fail()/complete() return None
+        # if the job was already terminal, e.g. raced with a cancellation).
+        if terminal_job is not None:
+            JOBS_TOTAL.labels(job_type=job.job_type.value, status=terminal_job.status.value).inc()
+
     async def _run_job(self, job: Job) -> None:
         executor = self._executors.get(job.job_type)
         if executor is None:
             async with self._repository_factory() as repos:
-                await repos.job_repository.fail(
+                terminal_job = await repos.job_repository.fail(
                     job.id,
                     error_message=(
                         f"Job type '{job.job_type.value}' execution is not yet supported"
                     ),
                 )
+                self._record_terminal(job, terminal_job)
             return
 
         async with self._repository_factory() as repos:
             try:
                 worker = await self._worker_manager_for(repos).provision_worker(job.id)
             except Exception as exc:
-                await repos.job_repository.fail(job.id, error_message=str(exc))
+                terminal_job = await repos.job_repository.fail(job.id, error_message=str(exc))
+                self._record_terminal(job, terminal_job)
                 return
 
         if worker.instance_id is None:
@@ -108,29 +118,40 @@ class JobProcessor:
             # mark_provisioning, which always sets instance_id) — handled explicitly
             # rather than asserted, since it's a real None in the type system.
             async with self._repository_factory() as repos:
-                await repos.job_repository.fail(
+                terminal_job = await repos.job_repository.fail(
                     job.id, error_message="Worker has no instance id after provisioning"
                 )
+                self._record_terminal(job, terminal_job)
             return
 
+        executor_started_at = time.perf_counter()
         try:
             execution_result = await asyncio.wait_for(
                 executor.execute(job, worker.instance_id),
                 timeout=self._job_execution_timeout_seconds + _EXECUTOR_WAIT_SLACK_SECONDS,
             )
         except Exception as exc:
+            JOB_EXECUTION_SECONDS.labels(job_type=job.job_type.value).observe(
+                time.perf_counter() - executor_started_at
+            )
             logger.warning("Execution failed for job %s: %s", job.id, exc)
             async with self._repository_factory() as repos:
-                await repos.job_repository.fail(job.id, error_message=str(exc))
+                terminal_job = await repos.job_repository.fail(job.id, error_message=str(exc))
+                self._record_terminal(job, terminal_job)
                 await self._worker_manager_for(repos).terminate_worker_for_job(job.id)
             return
 
+        JOB_EXECUTION_SECONDS.labels(job_type=job.job_type.value).observe(
+            time.perf_counter() - executor_started_at
+        )
+
         async with self._repository_factory() as repos:
             if execution_result.succeeded:
-                await repos.job_repository.complete(job.id, execution_result.result)
+                terminal_job = await repos.job_repository.complete(job.id, execution_result.result)
             else:
-                await repos.job_repository.fail(
+                terminal_job = await repos.job_repository.fail(
                     job.id,
                     error_message=execution_result.error_message or "Job execution failed",
                 )
+            self._record_terminal(job, terminal_job)
             await self._worker_manager_for(repos).terminate_worker_for_job(job.id)

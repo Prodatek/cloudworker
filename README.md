@@ -6,14 +6,15 @@ automatically tears the workers down when the job finishes.
 
 ## Status
 
-**Phase 7 of 8 (React + TypeScript Dashboard)** — see
-[`docs/architecture.md`](docs/architecture.md) for the full roadmap, and `docs/phase-1.md` through
-`docs/phase-7.md` for what shipped in each phase. Phase 3's AWS infra is IaC only (not yet applied
-to a real account) and Phase 6's worker AMI (`infra/packer/`) hasn't been built, so Phases 4–6's
-worker provisioning/execution are only proven via `moto`-mocked and hand-mocked tests in this
-environment. Phase 7 is the first phase with no AWS dependency at all — see
-[`docs/phase-7.md`](docs/phase-7.md) for what was (and, for one local-environment-specific
-Vitest quirk, wasn't quite) verified directly.
+**All 8 phases shipped** — see [`docs/architecture.md`](docs/architecture.md) for the full
+roadmap, and `docs/phase-1.md` through `docs/phase-8.md` for what shipped in each phase. Phase 3's
+AWS infra is IaC only (not yet applied to a real account) and Phase 6's worker AMI
+(`infra/packer/`) hasn't been built, so worker provisioning/execution are only proven via
+`moto`-mocked and hand-mocked tests in this environment — see
+[`docs/deployment-guide.md`](docs/deployment-guide.md) for standing this up against a real AWS
+account, and [`docs/phase-8.md`](docs/phase-8.md) for the final hardening pass (guaranteed worker
+cleanup, richer metrics, auth rate limiting, security review, CI/CD deploy pipeline, E2E scaffold)
+and what's left as explicit follow-up rather than assumed done.
 
 ## Quickstart
 
@@ -30,8 +31,8 @@ once (or after pulling new migrations) — it creates the `users`/`api_keys`/`jo
 - OpenAPI schema: <http://localhost:8000/openapi.json>
 - Liveness: `GET /healthz`
 - Readiness (checks Postgres): `GET /readyz`
-- Prometheus metrics: `GET /metrics`
-- Register: `POST /api/v1/auth/register` · Login: `POST /api/v1/auth/login`
+- Prometheus metrics: `GET /metrics` (see [`docs/observability.md`](docs/observability.md) for what's exposed)
+- Register: `POST /api/v1/auth/register` · Login: `POST /api/v1/auth/login` (both rate-limited per client IP)
 - API keys: `GET/POST /api/v1/api-keys`, `POST /api/v1/api-keys/{id}/revoke`
 - Jobs: `POST/GET /api/v1/jobs`, `GET/POST /api/v1/jobs/{id}[/cancel]`, `GET /api/v1/jobs/{id}/artifacts` (require an API key or a JWT from login)
 
@@ -61,6 +62,10 @@ alembic upgrade head
 pytest
 ```
 
+Frontend unit tests: `cd frontend && npm run test` (see [`frontend/README.md`](frontend/README.md)).
+Frontend E2E (Playwright, requires a running backend + Postgres): `cd frontend && npm run test:e2e`
+— see [`frontend/e2e/README.md`](frontend/e2e/README.md).
+
 ## Linting / type-checking
 
 ```bash
@@ -78,8 +83,8 @@ infra/terraform/bootstrap/     One-time remote state backend (S3 bucket + Dynamo
 infra/terraform/modules/       networking, iam, storage, compute
 infra/terraform/environments/  Thin per-environment composition of the modules above
 infra/packer/                  Worker AMI build (Playwright + runner harness on top of AL2023)
-docs/                          Architecture notes, phase reports, example API calls
-.github/workflows/             CI: lint, test, terraform validate
+docs/                          Architecture notes, phase reports, example API calls, deployment guide, observability guide
+.github/workflows/             ci.yml (lint, test, terraform validate), deploy.yml (build/push images, terraform plan/apply)
 docker-compose.yml             Local dev: Postgres + API + worker + frontend
 ```
 
@@ -91,5 +96,5 @@ docker-compose.yml             Local dev: Postgres + API + worker + frontend
 4. **Worker Manager** *(shipped)* — provisions/terminates EC2 workers, lifecycle state machine, `moto`-tested
 5. **Shell Job Execution over SSM** *(shipped)* — SSM SendCommand dispatch, full output to S3, concurrent job processing, payload validation
 6. **Playwright Browser Automation + Artifact Service** *(shipped)* — browser jobs via a shared JobExecutor protocol, one universal AMI (Packer), presigned-URL artifact retrieval
-7. **React + TypeScript Dashboard** *(this phase)* — login/register, JWT + API-key auth on the same endpoints, job submission/status/artifacts, API key management
-8. Hardening: metrics dashboards, auto-cleanup guarantees, deploy pipeline, security review, beta packaging
+7. **React + TypeScript Dashboard** *(shipped)* — login/register, JWT + API-key auth on the same endpoints, job submission/status/artifacts, API key management
+8. **Hardening & Beta** *(shipped)* — guaranteed worker cleanup (WorkerReaper), richer Prometheus metrics, auth rate limiting, security review, CI/CD deploy pipeline, deployment guide, E2E test scaffold

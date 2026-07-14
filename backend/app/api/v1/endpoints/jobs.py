@@ -15,6 +15,7 @@ from app.core.config import get_settings
 from app.domain.artifact_store import ArtifactStore
 from app.domain.entities import JobStatus, User
 from app.infrastructure.db.job_repository import SqlAlchemyJobRepository
+from app.infrastructure.metrics import JOBS_TOTAL
 from app.services.worker_manager import WorkerManager
 
 logger = logging.getLogger("cloudworker.jobs")
@@ -85,6 +86,7 @@ async def cancel_job(
                 job_id,
             )
 
+    JOBS_TOTAL.labels(job_type=cancelled.job_type.value, status=cancelled.status.value).inc()
     return JobResponse.from_entity(cancelled)
 
 

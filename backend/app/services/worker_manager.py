@@ -1,9 +1,11 @@
 import logging
+import time
 import uuid
 
 from app.domain.entities import Worker, WorkerStatus
 from app.domain.repositories import WorkerRepository
 from app.domain.worker_provisioner import ProvisioningError, WorkerProvisioner
+from app.infrastructure.metrics import WORKER_PROVISIONING_SECONDS
 
 logger = logging.getLogger("cloudworker.worker_manager")
 
@@ -38,6 +40,7 @@ class WorkerManager:
         """
         worker = await self._worker_repository.create(job_id)
         instance_id: str | None = None
+        started_at = time.perf_counter()
         try:
             instance_id = await self._provisioner.launch(job_id)
             await self._worker_repository.mark_provisioning(worker.id, instance_id)
@@ -60,6 +63,8 @@ class WorkerManager:
             if instance_id is not None:
                 await self._provisioner.terminate(instance_id)
             raise
+        finally:
+            WORKER_PROVISIONING_SECONDS.observe(time.perf_counter() - started_at)
 
     async def terminate_worker_for_job(self, job_id: uuid.UUID) -> None:
         """Terminates the job's worker, if one exists and isn't already terminated/failed.

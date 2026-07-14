@@ -4,6 +4,7 @@ from fastapi import Depends, HTTPException, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
+from app.core.rate_limit import FixedWindowRateLimiter, RateLimitExceededError
 from app.domain.artifact_store import ArtifactStore
 from app.domain.entities import User
 from app.infrastructure.database import get_db_session
@@ -71,6 +72,40 @@ def get_artifact_store(request: Request) -> ArtifactStore | None:
     Terraform has actually been applied.
     """
     return request.app.state.artifact_store
+
+
+def get_auth_rate_limiter(request: Request) -> FixedWindowRateLimiter:
+    # Lazily created rather than assumed to exist, so this dependency works whether or
+    # not app lifespan startup ran (e.g. httpx's ASGITransport doesn't trigger it unless
+    # asked to) — mirrors the None-until-configured pattern get_worker_manager/
+    # get_artifact_store already use for other app.state-backed resources.
+    limiter = getattr(request.app.state, "auth_rate_limiter", None)
+    if limiter is None:
+        settings = get_settings()
+        limiter = FixedWindowRateLimiter(
+            max_attempts=settings.auth_rate_limit_max_attempts,
+            window_seconds=settings.auth_rate_limit_window_seconds,
+        )
+        request.app.state.auth_rate_limiter = limiter
+    return limiter
+
+
+def enforce_auth_rate_limit(
+    request: Request,
+    limiter: FixedWindowRateLimiter = Depends(get_auth_rate_limiter),
+) -> None:
+    """Applied to register/login. Keyed by client IP — good enough to blunt naive
+    credential-stuffing/brute-force from a single source; see FixedWindowRateLimiter's
+    docstring for the in-memory/single-process trade-off.
+    """
+    client_host = request.client.host if request.client is not None else "unknown"
+    try:
+        limiter.check(client_host)
+    except RateLimitExceededError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Too many attempts, please try again later",
+        ) from exc
 
 
 async def get_current_user(

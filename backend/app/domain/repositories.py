@@ -82,6 +82,14 @@ class WorkerRepository(Protocol):
 
     async def mark_failed(self, worker_id: uuid.UUID, failure_reason: str) -> Worker: ...
 
+    async def list_stale(self, older_than_seconds: float) -> list[Worker]:
+        """Workers stuck in a non-terminal status (pending/provisioning/ready/terminating)
+        whose updated_at hasn't moved in over older_than_seconds — candidates for
+        WorkerReaper to terminate and fail, e.g. after a crash mid-provisioning or an
+        executor that never returned.
+        """
+        ...
+
 
 @dataclass
 class RepositoryBundle:

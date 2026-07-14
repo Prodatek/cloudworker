@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 
-from app.api.v1.deps import get_api_key_repository, get_user_repository
+from app.api.v1.deps import enforce_auth_rate_limit, get_api_key_repository, get_user_repository
 from app.api.v1.schemas.auth import LoginRequest, LoginResponse, RegisterRequest, RegisterResponse
 from app.core.config import get_settings
 from app.infrastructure.db.api_key_repository import SqlAlchemyApiKeyRepository
@@ -17,7 +17,12 @@ from app.infrastructure.security import (
 router = APIRouter(prefix="/auth", tags=["auth"])
 
 
-@router.post("/register", response_model=RegisterResponse, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/register",
+    response_model=RegisterResponse,
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(enforce_auth_rate_limit)],
+)
 async def register(
     body: RegisterRequest,
     user_repository: SqlAlchemyUserRepository = Depends(get_user_repository),
@@ -26,7 +31,7 @@ async def register(
     """Creates a user and returns their one and only initial API key.
 
     The key is only ever returned here, in plaintext, once — only its hash is stored.
-    No email verification / rate limiting yet (tracked as tech debt).
+    No email verification yet (tracked as tech debt); rate-limited per client IP.
     """
     existing = await user_repository.get_by_email(body.email)
     if existing is not None:
@@ -40,7 +45,9 @@ async def register(
     return RegisterResponse(user_id=user.id, email=user.email, api_key=api_key)
 
 
-@router.post("/login", response_model=LoginResponse)
+@router.post(
+    "/login", response_model=LoginResponse, dependencies=[Depends(enforce_auth_rate_limit)]
+)
 async def login(
     body: LoginRequest,
     user_repository: SqlAlchemyUserRepository = Depends(get_user_repository),
@@ -48,7 +55,7 @@ async def login(
     """Password login for the dashboard. Issues a JWT — API clients keep using API keys.
 
     Returns the same generic 401 whether the email is unknown or the password is wrong,
-    so a caller can't use this to enumerate registered emails.
+    so a caller can't use this to enumerate registered emails. Rate-limited per client IP.
     """
     user = await user_repository.get_by_email(body.email)
     if user is None or not verify_password(body.password, user.hashed_password):

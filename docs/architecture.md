@@ -77,6 +77,11 @@ client -> PrometheusMiddleware -> RequestContextMiddleware -> FastAPI router -> 
   contract change breaks the frontend build instead of drifting silently. Login/register, job
   submission (shell + browser), status polling, and artifact download via the presigned URLs
   Phase 6's Artifact Service produces.
+- **Guaranteed worker cleanup** *(shipped Phase 8)* — `app/services/worker_reaper.py`'s
+  `WorkerReaper` runs alongside `JobProcessor` in the same worker process, polling for workers
+  stuck in a non-terminal status past `WORKER_STALE_AFTER_SECONDS` (a crash mid-provisioning, or
+  an executor that never returned) and force-terminating + failing them — extending the mission's
+  "automatically destroys workers" guarantee to crash/hang recovery, not just the happy path.
 
 ## 8-Phase Roadmap
 
@@ -87,7 +92,39 @@ client -> PrometheusMiddleware -> RequestContextMiddleware -> FastAPI router -> 
 5. **Shell Execution** *(shipped)* — SSM SendCommand for shell jobs, full output to S3 (SSM-native), concurrent job processing, cancellation/timeouts.
 6. **Browser Automation** *(shipped)* — Playwright jobs (one universal AMI via Packer), screenshot/video capture, Artifact Service, presigned URL downloads.
 7. **Dashboard** *(shipped)* — React + TypeScript UI: login, submit jobs, poll status, browse artifacts, manage API keys.
-8. **Hardening & Beta** — metrics dashboards, guaranteed cleanup (idle/orphan reaper), CD pipeline, security review, install docs.
+8. **Hardening & Beta** *(shipped)* — guaranteed cleanup (`WorkerReaper`), richer metrics, auth
+   rate limiting, security review, CD pipeline, deployment guide, E2E test scaffold.
+
+## Security model
+
+- **Arbitrary code execution is the product, not an oversight.** A CloudWorker job's payload is a
+  shell command or a Playwright script that runs with no sandboxing beyond what the worker
+  instance itself provides — that's the mission (`POST /api/v1/jobs` exists specifically to run
+  arbitrary shell/browser automation). The controls that make this safe are: (1) only an
+  authenticated user (API key or JWT) can submit a job at all; (2) each job gets its own
+  ephemeral EC2 worker, provisioned fresh and terminated immediately after
+  (`app/services/worker_manager.py`, backstopped by `app/services/worker_reaper.py` for
+  crash/hang cases — Phase 8), so there's no persistent multi-tenant execution host to escape
+  into; (3) the worker's IAM role (`infra/terraform/modules/iam`) grants only
+  `AmazonSSMManagedInstanceCore` (required for the SSM agent to function) plus scoped
+  `s3:GetObject`/`s3:PutObject`/`s3:ListBucket` on exactly its own logs/artifacts buckets — no
+  wildcard resources, no access to any other AWS service; (4) workers launch into a
+  private-only subnet reachable solely via VPC interface endpoints for SSM/S3 (`infra/terraform/
+  modules/networking`), so a job can't reach the rest of the account's network. A determined
+  authenticated user can still use their own job to attack *their own worker* — that's expected
+  and unavoidable given the feature; what these controls prevent is a job affecting anything
+  outside its own single-use, network-isolated instance.
+- **Dual credentials converge on one identity.** API keys and JWTs both resolve to the same
+  `User` through `get_current_user` (`app/api/v1/deps.py`) — there's exactly one authorization
+  model, not two to keep in sync.
+- **Auth endpoints are rate-limited** (`app/core/rate_limit.py`, Phase 8) per client IP —
+  in-memory/single-process, a deliberate scope limit (see the module's docstring), not a
+  production-scale guarantee.
+- **JWTs are decoded with an explicit single algorithm** (`decode_access_token`,
+  `app/infrastructure/security.py`) — `algorithms=[settings.jwt_algorithm]`, never inferred from
+  the token itself, so a forged token can't downgrade to `alg: none` or swap algorithms.
+- **Request logging never includes bodies, headers, or tokens** (`RequestContextMiddleware`,
+  `app/core/middleware.py`) — only method, path, status, and duration.
 
 ## Why Postgres for the job queue (not SQS/Redis)
 

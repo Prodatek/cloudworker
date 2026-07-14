@@ -4,7 +4,7 @@ from contextlib import asynccontextmanager
 
 from httpx import AsyncClient
 
-from app.domain.entities import WorkerStatus
+from app.domain.entities import JobType, WorkerStatus
 from app.domain.repositories import RepositoryBundle
 from app.infrastructure.db.job_repository import SqlAlchemyJobRepository
 from app.infrastructure.db.worker_repository import SqlAlchemyWorkerRepository
@@ -108,7 +108,7 @@ async def test_job_processor_executes_and_completes_shell_job(
     processor = JobProcessor(
         repository_factory=_repository_factory(),
         provisioner=fake_provisioner,
-        executor=fake_executor,
+        executors={JobType.SHELL: fake_executor},
         ssm_ready_timeout_seconds=5,
         job_execution_timeout_seconds=5,
         max_concurrent_jobs=1,
@@ -156,7 +156,7 @@ async def test_job_processor_fails_job_when_provisioning_fails(
     processor = JobProcessor(
         repository_factory=_repository_factory(),
         provisioner=fake_provisioner,
-        executor=fake_executor,
+        executors={JobType.SHELL: fake_executor},
         ssm_ready_timeout_seconds=5,
         job_execution_timeout_seconds=5,
         max_concurrent_jobs=1,

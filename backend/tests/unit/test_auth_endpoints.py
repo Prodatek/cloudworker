@@ -3,7 +3,8 @@ from collections.abc import AsyncIterator
 import pytest
 from httpx import ASGITransport, AsyncClient
 
-from app.api.v1.deps import get_api_key_repository, get_user_repository
+from app.api.v1.deps import get_api_key_repository, get_auth_rate_limiter, get_user_repository
+from app.core.rate_limit import FixedWindowRateLimiter
 from app.infrastructure.security import hash_password
 from app.main import app
 from tests.unit.fakes import FakeApiKeyRepository, FakeUserRepository
@@ -22,6 +23,11 @@ async def client() -> AsyncIterator[tuple[AsyncClient, FakeUserRepository, FakeA
     api_key_repository = FakeApiKeyRepository()
     app.dependency_overrides[get_user_repository] = lambda: user_repository
     app.dependency_overrides[get_api_key_repository] = lambda: api_key_repository
+    # A fresh, generously-limited rate limiter per test — these tests aren't testing rate
+    # limiting itself (see test_auth_rate_limit.py) and `app` is a module-level singleton,
+    # so without this override the real limiter's counters would leak across tests.
+    rate_limiter = FixedWindowRateLimiter(max_attempts=1000, window_seconds=60.0)
+    app.dependency_overrides[get_auth_rate_limiter] = lambda: rate_limiter
     try:
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url="http://test") as ac:
@@ -29,6 +35,7 @@ async def client() -> AsyncIterator[tuple[AsyncClient, FakeUserRepository, FakeA
     finally:
         app.dependency_overrides.pop(get_user_repository, None)
         app.dependency_overrides.pop(get_api_key_repository, None)
+        app.dependency_overrides.pop(get_auth_rate_limiter, None)
 
 
 async def test_register_creates_user_and_returns_api_key(client) -> None:

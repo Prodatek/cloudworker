@@ -1,11 +1,18 @@
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.domain.entities import Worker, WorkerStatus
 from app.infrastructure.db.models import WorkerModel
+
+_NON_TERMINAL_STATUSES = (
+    WorkerStatus.PENDING.value,
+    WorkerStatus.PROVISIONING.value,
+    WorkerStatus.READY.value,
+    WorkerStatus.TERMINATING.value,
+)
 
 
 def _to_entity(model: WorkerModel) -> Worker:
@@ -85,3 +92,13 @@ class SqlAlchemyWorkerRepository:
         return await self._set_status(
             worker_id, status=WorkerStatus.FAILED.value, failure_reason=failure_reason
         )
+
+    async def list_stale(self, older_than_seconds: float) -> list[Worker]:
+        cutoff = datetime.now(UTC) - timedelta(seconds=older_than_seconds)
+        result = await self._session.execute(
+            select(WorkerModel).where(
+                WorkerModel.status.in_(_NON_TERMINAL_STATUSES),
+                WorkerModel.updated_at < cutoff,
+            )
+        )
+        return [_to_entity(model) for model in result.scalars().all()]
